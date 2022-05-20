@@ -7,7 +7,6 @@
 library(tidyverse)
 library(shiny)
 library(shinyalert)
-library(visNetwork)
 
 # TODO look into HDF5 files for saving big data sets
 
@@ -19,9 +18,7 @@ library(visNetwork)
 # - GO processes
 # - GO process annotation
 # - Statistics from ANOVA/Tukey
-# - TODO the network stuff
 
-# Do I really need the GO processes? I am not 100% sure to be honest...
 # setwd("D:/Daten/Work/Dublin/CloudStation/12_CT_APMS/kras_apms")
 # setwd("/home/junkpp/work/12_CT_APMS/kras_apms")
 # setwd("D:/Daten/Work/Dublin/CloudStation/12_CT_APMS")
@@ -65,7 +62,7 @@ choices_anova_factors <- df_anova %>%
   arrange(n_components, term) %>% 
   pull(term)
 
-# set default settings for initialising
+# set default settings for initializing
 default_ontology <- 'BP'
 default_seltype <- 'process'
 default_id <- 'GO:0006007'
@@ -133,13 +130,6 @@ ui <- fluidPage(
         label = 'Selection Mutation Status',
         choices = c('WT', 'G12C', 'G12D', 'G12V'),
         selected = default_mut_status,
-        multiple = TRUE
-      ),
-      selectInput(
-        inputId = 'conditions',
-        label = 'Select Conditions',
-        choices = choices_conditions,
-        selected = default_conditions,
         multiple = TRUE
       )
     )
@@ -235,15 +225,9 @@ ui <- fluidPage(
           )
         )
       )
-    ),
-    
-    # Network
-    tabPanel(
-      'Network',
-      value = 'network',
-      visNetworkOutput('example'))
+    )
   ),
-   
+    
   hr(),
    
   # additional features
@@ -272,64 +256,6 @@ ui <- fluidPage(
 
 # Server logic
 server <- function(input, output) {
-  ## test network
-  output$example <- renderVisNetwork({
-    edges <- sysgo_graph
-    nodes <- tibble(
-      id = unique(c(edges$to, edges$from))
-    ) %>%
-      mutate(
-        # x = seq(from=1, to=n()),
-        # y = seq(from=1, to=n()),
-        label = id)
-    
-    visNetwork(nodes, edges, width = '100%') %>%
-      # visIgraphLayout(
-      #   layout = 'layout_with_graphopt'
-      # ) %>%
-      visHierarchicalLayout(
-        enabled = TRUE,
-        sortMethod = 'hubsize',
-        direction = 'UD'
-      ) %>%
-      visPhysics(stabilization = FALSE) %>%
-      visEdges(
-        arrows = 'to',
-        smooth = F) %>%
-      visNodes(
-        shape = "square",
-        color = list(
-          background = "#0085AF",
-          border = "#013848",
-          highlight = "#FF8000"
-        ),
-        shadow = FALSE,
-        physics = FALSE
-      )
-    
-    # TODO
-    # initialize with fixed coordinates
-    # these coordinates are calculated a priori
-  })
-  
-  ##################################################################
-  ## REACTIVE VALUES: vectors
-  reactive_sel_condition <- reactive({
-    input$conditions %>%
-      str_split_fixed('_', 2) %>%
-      `[`(i=,j=1) %>%
-      unique
-  })
-  
-  reactive_sel_concentration <- reactive({
-    tmp <- input$conditions %>%
-      str_split_fixed('_', 2) %>%
-      `[`(i=,j=2) %>%
-      unique
-    case_when(tmp == '' ~ 'none',
-              T ~ tmp)
-  })
-  
   ##################################################################
   ## REACTIVE VALUES: data frames
   
@@ -342,9 +268,7 @@ server <- function(input, output) {
       filter(id == input$id) %>%
       select(hgnc) %>%
       left_join(df_apms, by = 'hgnc') %>%
-      filter(mut_status %in% str_to_lower(input$mut_status)) %>%
-      filter(condition %in% reactive_sel_condition()) %>%
-      filter(concentration %in% reactive_sel_concentration())
+      filter(mut_status %in% str_to_lower(input$mut_status)) 
   })
   
   # reactive subset of df_sum
@@ -354,9 +278,7 @@ server <- function(input, output) {
     # - selected conditions
     df_sum %>%
       filter(id == input$id) %>%
-      filter(mut_status %in% str_to_lower(input$mut_status)) %>%
-      filter(condition %in% reactive_sel_condition()) %>%
-      filter(concentration %in% reactive_sel_concentration())
+      filter(mut_status %in% str_to_lower(input$mut_status)) 
   })
   
   # reactive subset of df_anova
@@ -520,7 +442,7 @@ server <- function(input, output) {
   ))
   
   ##################################################################
-  ## OVERSERVERS
+  ## OBSERVERS
   
   # add observers to selection of processes
   # update based on process selection
@@ -588,8 +510,6 @@ server <- function(input, output) {
     updateRadioButtons(inputId = 'seltype', selected = default_seltype)
     updateSelectInput(inputId = 'id', selected = default_id)
     updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
-    updateSelectInput(inputId = 'conditions', selected = default_conditions)
-    updateTabsetPanel(inputId = 'main_panel', selected = default_panel)
   }) 
   
   # for modals, consider html = TRUE and maybe custom icons?
