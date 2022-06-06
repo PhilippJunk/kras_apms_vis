@@ -31,8 +31,8 @@ df_anova <- read.csv('data/df_anova.csv', header = T)
 df_gsea <- read.csv('data/df_gsea.csv', header = T)
 
 # color schemes from Camille's thesis:
-# TODO filter out what I don't need, 
-# maybe include more
+# TODO filter out what I don't need, maybe include more
+# TODO I need color codes for mutation status
 conditions <- c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa')
 conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
 condition_colors <- c("#001524","#12616D","#75964A",
@@ -67,7 +67,6 @@ default_ontology <- 'BP'
 default_seltype <- 'process'
 default_id <- 'GO:0006007'
 default_mut_status <- c('WT', 'G12C', 'G12D', 'G12V')
-default_conditions <- c('unstim', 'dmog_200', 'egf_200', 'il6_200', 'pge2_200', 'tnfa_200')
 default_panel <- 'sum_lfq'
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
 default_anova_pval <- 0.05
@@ -94,10 +93,6 @@ ui <- fluidPage(
         inputId = 'ontology',
         label = 'Ontology', 
         selected = default_ontology,
-        # choiceValues = c('BP', 'MF', 'CC'),
-        # choiceNames = c('GO - Biological Process',
-        #                 'GO - Molecular Function',
-        #                 'GO - Cellular Compartment')
         choiceValues = c('BP',
                          'SysGO'),
         choiceNames = c('GO - Biological Process',
@@ -116,7 +111,7 @@ ui <- fluidPage(
       selectInput(
         inputId = 'id',
         label = 'ID/Process',
-        choices = c('GO:0006007'),
+        choices = default_id,
         selected = default_id,
         multiple = FALSE
       )
@@ -124,7 +119,7 @@ ui <- fluidPage(
     column(
       3,
       h4('Data Control Panel'),
-      # TODO make selection for conditions!
+      # Input for selection of mutation status
       selectInput(
         inputId = 'mut_status',
         label = 'Selection Mutation Status',
@@ -255,7 +250,7 @@ ui <- fluidPage(
 )
 
 # Server logic
-server <- function(input, output) {
+server <- function(input, output, session) {
   ##################################################################
   ## REACTIVE VALUES: data frames
   
@@ -263,7 +258,9 @@ server <- function(input, output) {
   dfr_apms <- reactive({
     # return data frame derived from df_apms filtered by
     # - selected GO process
-    # - selected conditions TODO
+    # - selected mutations
+    validate(need(input$id, 'Please select an ontology term.'),
+             need(input$mut_status, 'Please select at least one mutation status'))
     df_ontology %>%
       filter(id == input$id) %>%
       select(hgnc) %>%
@@ -275,7 +272,9 @@ server <- function(input, output) {
   dfr_sum <- reactive({
     # return data frame derived from df_sum filtered by
     # - selected GO process
-    # - selected conditions
+    # - selected mutations
+    validate(need(input$id, 'Please select an ontology term.'),
+             need(input$mut_status, 'Please select at least one mutation status'))
     df_sum %>%
       filter(id == input$id) %>%
       filter(mut_status %in% str_to_lower(input$mut_status)) 
@@ -287,6 +286,7 @@ server <- function(input, output) {
     # - selected GO process
     # - selected p_value
     # - selected interactions
+    validate(need(input$id, 'Please select an ontology term.'))
     df_anova %>%
       filter(id == input$id) %>%
       filter(p_adj <= input$anova_pval) %>%
@@ -302,6 +302,7 @@ server <- function(input, output) {
     # return data frame derived from df_gsea filtered by
     # - selected GO process
     # - selected p_value
+    validate(need(input$id, 'Please select an ontology term.'))
     df_gsea %>%
       filter(id == input$id) %>%
       filter(p_adj <= input$gsea_pval) %>%
@@ -312,7 +313,87 @@ server <- function(input, output) {
   
   ##################################################################
   ## REACTIVE VALUES: plots
-
+  
+  # construct plot for information on GO process
+  reac_plot_goprocess_info <- reactive({
+    # TODO include custom color set
+    df <- bind_rows(
+      tibble(
+        label = 'Whole Set',
+        condition = 'whole_set',
+        count = df_ontology %>% filter(id == input$id) %>% 
+          pull(n_all) %>% head(1)
+      ),
+      dfr_apms() %>%
+        group_by(label,group, mut_status, condition, concentration) %>%
+        summarise(count = n()) %>%
+        ungroup %>%
+        arrange(-count) %>%
+        select(label, condition, count)
+    ) %>%
+      mutate(label = factor(label, levels = unique(label)))
+    df %>%
+      ggplot(aes(x = label, y = count, fill = condition)) +
+      geom_bar(stat = 'identity', position = 'dodge', color = 'black') +
+      # scale_fill_discrete(breaks = levels(df$condition)[-1]) +
+      # scale_fill_manual(values = c(), breaks = c()) +
+      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      theme_bw() +
+      NULL
+  })
+  
+  # construct plot of sum of LFQ intensities 
+  reac_plot_lfqsum <- reactive({
+    dfr_sum() %>%
+      ggplot(aes(x = mut_status, y = sum_LFQ, fill=mut_status)) +
+      geom_boxplot(color = 'black', alpha=0.5) +
+      geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
+      facet_grid(cols = vars(condition, concentration),
+                 scales = 'free') +
+      theme_bw(base_size = 15) +
+      NULL
+  })
+  
+  # construct plot for overview over individual proteins
+  reac_plot_proteins_overview <- reactive({
+    dfr_apms() %>%
+      group_by(hgnc) %>%
+      summarise(count = n()) %>%
+      ungroup %>%
+      arrange(desc(count)) %>%
+      mutate(hgnc = factor(hgnc, levels = hgnc)) %>% 
+      ggplot(aes(x = hgnc, y = count)) +
+      geom_bar(stat = 'identity') +
+      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      labs(x = 'HGNC', y = 'Number of samples') +
+      theme_bw() +
+      NULL
+  })
+  
+  # construct plot for individual proteins
+  reac_plot_proteins <- reactive({
+    validate(need(input$indiv_proteins, 'Please select at least one protein to plot.'))
+    plot <- dfr_apms() %>%
+      filter(hgnc %in% input$indiv_proteins) %>%
+      mutate(hgnc = factor(hgnc, levels = input$indiv_proteins)) %>%
+      ggplot(aes(x = str_c(condition, concentration), y = log2(LFQ), color = condition)) +
+      geom_point() +
+      theme_bw() +
+      NULL
+    
+    # TODO also adjust based on number of mutations
+    # adjust facetting depending on number of proteins to show
+    if (length(input$indiv_proteins) > 1) {
+      plot <- plot + 
+        facet_grid(rows=vars(hgnc), cols = vars(mut_status),
+                   scales = 'free')
+    } else {
+      plot <- plot + 
+        facet_grid(cols = vars(mut_status),
+                   scales = 'free')
+    }
+    plot
+  })
   
   ##################################################################
   ## RENDERED ELEMENTS
@@ -338,84 +419,22 @@ server <- function(input, output) {
   
   # render plot for information on GO process
   output$plot_goprocess_info <- renderPlot({
-    # TODO figure out how to remove the whole set from the legend?
-    # TODO include custom color set
-    
-    df <- bind_rows(
-      tibble(
-        label = 'Whole Set',
-        condition = 'whole_set',
-        count = df_ontology %>% filter(id == input$id) %>% 
-          pull(n_all) %>% head(1)
-      ),
-      dfr_apms() %>%
-        group_by(label,group, mut_status, condition, concentration) %>%
-        summarise(count = n()) %>%
-        ungroup %>%
-        arrange(-count) %>%
-        select(label, condition, count)
-    ) %>%
-      mutate(label = factor(label, levels = unique(label)))
-    df %>%
-      ggplot(aes(x = label, y = count, fill = condition)) +
-        geom_bar(stat = 'identity', position = 'dodge', color = 'black') +
-        # scale_fill_discrete(breaks = levels(df$condition)[-1]) +
-        # scale_fill_manual(values = c(), breaks = c()) +
-        scale_x_discrete(guide = guide_axis(angle = 90)) +
-        theme_bw() +
-        NULL
+    reac_plot_goprocess_info()
   })
   
   # render plot of sum of LFQ intensities 
   output$plot_lfqsum <- renderPlot({
-    dfr_sum() %>%
-      ggplot(aes(x = mut_status, y = sum_LFQ, color=mut_status)) +
-        geom_point(size = 3) +
-        facet_grid(cols = vars(condition, concentration),
-                   scales = 'free') +
-        theme_bw(base_size = 15) +
-        NULL
+    reac_plot_lfqsum()
   })
 
-   
-  # plot for overview over individual proteins
+  # render plot for overview over individual proteins
   output$plot_proteins_overview <- renderPlot({
-    dfr_apms() %>%
-      group_by(hgnc) %>%
-      summarise(count = n()) %>%
-      ungroup %>%
-      arrange(desc(count)) %>%
-      mutate(hgnc = factor(hgnc, levels = hgnc)) %>% 
-      ggplot(aes(x = hgnc, y = count)) +
-        geom_bar(stat = 'identity') +
-        scale_x_discrete(guide = guide_axis(angle = 90)) +
-        labs(x = 'HGNC', y = 'Number of samples') +
-        theme_bw() +
-        NULL
+    reac_plot_proteins_overview()
   })
   
-  # plot for individual proteins
+  # render plot for individual proteins
   output$plot_proteins <- renderPlot({
-    plot <- dfr_apms() %>%
-      filter(hgnc %in% input$indiv_proteins) %>%
-      mutate(hgnc = factor(hgnc, levels = input$indiv_proteins)) %>%
-      ggplot(aes(x = str_c(condition, concentration), y = log2(LFQ), color = condition)) +
-        geom_point() +
-        theme_bw() +
-        NULL
-    
-    # TODO also adjust based on number of mutations
-    # adjust facetting depending on number of proteins to show
-    if (length(input$indiv_proteins) > 1) {
-      plot <- plot + 
-        facet_grid(rows=vars(hgnc), cols = vars(mut_status),
-                   scales = 'free')
-    } else {
-      plot <- plot + 
-        facet_grid(cols = vars(mut_status),
-                   scales = 'free')
-    }
-    plot
+    reac_plot_proteins()
   })
   
   # render ANOVA table
@@ -480,8 +499,9 @@ server <- function(input, output) {
       # random selection
       selected <- choice_values[1]
     }
-          
+
     updateSelectInput(
+      session, 
       inputId = 'id',
       choices = choice_values,
       selected = selected
@@ -498,7 +518,8 @@ server <- function(input, output) {
      updateSelectizeInput(
        inputId = 'indiv_proteins',
        choices = proteins,
-       selected = proteins[1]
+       selected = proteins[1],
+       server = TRUE
      )
   })
   
@@ -508,7 +529,7 @@ server <- function(input, output) {
     # reset everything back to defaults
     updateRadioButtons(inputId = 'ontology', selected = default_ontology)
     updateRadioButtons(inputId = 'seltype', selected = default_seltype)
-    updateSelectInput(inputId = 'id', selected = default_id)
+    updateSelectizeInput(inputId = 'id', selected = default_id)
     updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
   }) 
   
@@ -529,6 +550,7 @@ server <- function(input, output) {
     )
   })
 }
+
 
 # Run the application 
 shinyApp(ui = ui, server = server)
