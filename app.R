@@ -37,14 +37,10 @@ conditions <- c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa')
 conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
 condition_colors <- c("#001524","#12616D","#75964A",
                       "#A1869E","#FF7D00","#78290F")
-concentrations <- c('none', '20', '200')
-concentrations_hq <- c('None', '20 ng/ml', '200 ng/ml')
-concentration_shapes <- c(15, 16, 17)
 
 mut_status <- c('wt', '12c', '12d', '12v')
 mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
-mut_status_shapes <- c(18, 15, 16, 17)
-
+mut_status_colors <- c() # TODO
 
 # get choices for inputs
 choices_conditions <- df_apms %>%
@@ -335,11 +331,12 @@ server <- function(input, output, session) {
       mutate(label = factor(label, levels = unique(label)))
     df %>%
       ggplot(aes(x = label, y = count, fill = condition)) +
-      geom_bar(stat = 'identity', position = 'dodge', color = 'black') +
-      # scale_fill_discrete(breaks = levels(df$condition)[-1]) +
-      # scale_fill_manual(values = c(), breaks = c()) +
+      geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
+      scale_fill_manual(values = c(condition_colors, 'white'), 
+                        breaks = c(conditions, 'whole_set'), 
+                        labels = c(conditions_hq, 'Whole Set')) +
       scale_x_discrete(guide = guide_axis(angle = 90)) +
-      theme_bw() +
+      theme_minimal() +
       NULL
   })
   
@@ -347,9 +344,10 @@ server <- function(input, output, session) {
   reac_plot_lfqsum <- reactive({
     dfr_sum() %>%
       ggplot(aes(x = mut_status, y = sum_LFQ, fill=mut_status)) +
-      geom_boxplot(color = 'black', alpha=0.5) +
+      geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
       facet_grid(cols = vars(condition, concentration)) +
+      scale_x_discrete(guide = guide_axis(angle = 90)) +
       theme_bw(base_size = 15) +
       NULL
   })
@@ -363,10 +361,11 @@ server <- function(input, output, session) {
       arrange(desc(count)) %>%
       mutate(hgnc = factor(hgnc, levels = hgnc)) %>% 
       ggplot(aes(x = hgnc, y = count)) +
-      geom_bar(stat = 'identity') +
+      geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
       scale_x_discrete(guide = guide_axis(angle = 90)) +
-      labs(x = 'HGNC', y = 'Number of samples') +
-      theme_bw() +
+      labs(x = 'HGNC', y = 'Number of samples',
+           caption = 'Showing X of X proteins.') + # TODO
+      theme_minimal() +
       NULL
   })
   
@@ -376,13 +375,19 @@ server <- function(input, output, session) {
     plot <- dfr_apms() %>%
       filter(hgnc %in% input$indiv_proteins) %>%
       mutate(hgnc = factor(hgnc, levels = input$indiv_proteins)) %>%
-      ggplot(aes(x = str_c(condition, concentration), y = log2(LFQ), color = condition)) +
-      geom_point() +
+      ggplot(aes(x = str_glue('{condition}_{concentration}'), 
+                 y = log2(LFQ), fill = condition)) +
+      geom_boxplot(color = 'black', alpha=0.8) +
+      geom_point(position = position_jitter(height=0, width=0.2)) +
+      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      scale_fill_manual(values = condition_colors, 
+                        breaks = conditions, 
+                        labels = conditions_hq) +
       theme_bw() +
       NULL
     
     # TODO also adjust based on number of mutations
-    # adjust facetting depending on number of proteins to show
+    # adjust faceting depending on number of proteins to show
     if (length(input$indiv_proteins) > 1) {
       plot <- plot + 
         facet_grid(rows=vars(hgnc), cols = vars(mut_status),
@@ -510,14 +515,15 @@ server <- function(input, output, session) {
   # add observation to selection of individual proteins to plot
   # Updated based on which GO process is selected
   observe({
-     proteins <- df_ontology %>%
-       filter(id == input$id) %>%
-       inner_join(df_apms, by = 'hgnc') %>%
-       pull(hgnc) %>% unique %>% sort
-     updateSelectizeInput(
+    df_proteins <- dfr_apms() %>%
+      group_by(hgnc) %>%
+      summarise(count = n()) %>%
+      ungroup %>%
+      arrange(desc(count))
+    updateSelectizeInput(
        inputId = 'indiv_proteins',
-       choices = proteins,
-       selected = proteins[1],
+       choices = df_proteins$hgnc,
+       selected = df_proteins$hgnc[1],
        server = TRUE
      )
   })
