@@ -4,13 +4,18 @@
 ## Data by Camille Ternet
 ## 
 
+library(AnnotationDbi)
+library(GO.db)
+library(org.Hs.eg.db)
+library(MsCoreUtils)
+library(limma)
+
 library(tidyverse)
 library(furrr)
 
-
 future::plan(multisession, workers = 7)
 
-# TODO deposit raw datasets in data/raw/ and read from them
+# TODO download raw datasets from zenodo to data/raw/ and read from them
 if (.Platform$OS.type == 'unix') {
   setwd('/home/junkpp/work/12_CT_APMS')
 } else if (.Platform$OS.type == 'windows') {

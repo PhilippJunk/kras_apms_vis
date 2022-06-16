@@ -65,7 +65,7 @@ choices_anova_factors <- df_anova %>%
 # set default settings for initializing
 default_ontology <- 'BP'
 default_seltype <- 'process'
-default_id <- 'GO:0006007'
+default_id <- 'GO:0061621'
 default_mut_status <- c('WT', 'G12C', 'G12D', 'G12V')
 default_panel <- 'sum_lfq'
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
@@ -111,7 +111,7 @@ ui <- fluidPage(
       selectInput(
         inputId = 'id',
         label = 'ID/Process',
-        choices = default_id,
+        choices = c(default_id),
         selected = default_id,
         multiple = FALSE
       )
@@ -127,6 +127,7 @@ ui <- fluidPage(
         selected = default_mut_status,
         multiple = TRUE
       )
+	  # TODO maybe rebuild?
     )
   ),
   
@@ -348,8 +349,7 @@ server <- function(input, output, session) {
       ggplot(aes(x = mut_status, y = sum_LFQ, fill=mut_status)) +
       geom_boxplot(color = 'black', alpha=0.5) +
       geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
-      facet_grid(cols = vars(condition, concentration),
-                 scales = 'free') +
+      facet_grid(cols = vars(condition, concentration)) +
       theme_bw(base_size = 15) +
       NULL
   })
@@ -501,10 +501,9 @@ server <- function(input, output, session) {
     }
 
     updateSelectInput(
-      session, 
       inputId = 'id',
       choices = choice_values,
-      selected = selected
+      selected = selected,
     )
   })
    
