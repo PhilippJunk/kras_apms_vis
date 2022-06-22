@@ -6,6 +6,8 @@ $(document).on('click', '.go_sel_button', function(e) {
      typeof e.target.href != "undefined" && // If it's a link  
      e.target.href.length > 0) {              // with an href
         return; }                      // don't mess with it.
-Shiny.onInputChange("js.button_clicked", e.target.id + "_" + 
-   (new Date()).getTime());
+// Shiny.onInputChange("js.button_clicked", e.target.id + "_" + 
+//   (new Date()).getTime());
+	// instead of sending information back to R, why not change the ID directly in the browser
+  document.getElementById('id').selectize.setValue(e.target.id)
 });

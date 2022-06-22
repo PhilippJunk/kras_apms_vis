@@ -612,19 +612,6 @@ server <- function(input, output, session) {
     )
   })
   
-  # add ovservers for dynamically generated GO_ID action buttons
-  observeEvent(input$js.button_clicked, {
-    uid = str_split(input$js.button_clicked, "_")
-    button = uid[[1]][1]
-    n = uid[[1]][2]
-    # for debugging...
-    print(paste0(button, " clicked on row ", n))
-    updateSelectInput(
-      inputId = 'id',
-      selected = button,
-    )
-  })
-   
   # add observation to selection of individual proteins to plot
   # Updated based on which GO process is selected
   observe({
@@ -671,6 +658,5 @@ server <- function(input, output, session) {
 
 
 # Run the application 
-while (!is.null(dev.list()))  dev.off()
 shinyApp(ui = ui, server = server)
 
