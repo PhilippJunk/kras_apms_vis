@@ -1,47 +1,12 @@
 library(ComplexHeatmap)
 library(tidyverse)
 
+# TODO replace lookup with retrieval from df_annotation (which can be moved to the respective actions)
 get_go_term = function(go_id) {
   term = suppressMessages(AnnotationDbi::select(GO.db::GO.db, keys = go_id, columns = "TERM")$TERM)
   term[is.na(term)] = "NA"
   term
 }
-
-# click_action = function(df, output) {
-#   output[["go_info"]] = renderUI({
-#     if(!is.null(df)) {
-#       go_id1 = rownames(full_dist_mat)[df$row_index]
-#       go_id2 = colnames(full_dist_mat)[df$column_index]
-#       
-#       HTML(str_glue(
-#         "<pre>
-# ## Row GO ID
-# <a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1)}
-# 
-# ## Column GO ID:
-# <a href='http://amigo.geneontology.org/amigo/term/{go_id2}' target='_blank'>{go_id2}</a>: {get_go_term(go_id2)}
-# </pre>"
-#       ))
-#     }
-#   })
-# }
-# 
-# brush_action = function(df, output) {
-#   output[["go_info"]] = renderUI({
-#     if(!is.null(df)) {
-#       row_index = unique(unlist(df$row_index))
-#       column_index = unique(unlist(df$column_index))
-#       go_id1 = rownames(full_dist_mat)[row_index]
-#       go_id2 = colnames(full_dist_mat)[column_index]
-#       
-#       go_id = union(go_id1, go_id2)
-#       
-#       go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>% 
-#         str_c(collapse='\n')
-#       HTML(str_glue("<pre>{go_text}</pre>"))
-#     }
-#   })
-# }
 
 ###############################################################################
 # make custom heatmap
