@@ -4,9 +4,50 @@
 ## Developed by Philipp Junk, 2022
 ##
 
+library(ComplexHeatmap)
+library(InteractiveComplexHeatmap)
 library(tidyverse)
 library(shiny)
+library(shinyjs)
 library(shinyalert)
+
+source('functions.R')
+click_action = function(df, output) {
+  output[["go_info"]] = renderUI({
+    if(!is.null(df)) {
+      go_id1 = rownames(full_dist_mat)[df$row_index]
+      go_id2 = colnames(full_dist_mat)[df$column_index]
+      
+      HTML(str_glue(
+        "<pre>
+## Row GO ID
+<a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1)}
+
+## Column GO ID:
+<a href='http://amigo.geneontology.org/amigo/term/{go_id2}' target='_blank'>{go_id2}</a>: {get_go_term(go_id2)}
+</pre>"
+      ))
+    }
+  })
+}
+
+brush_action = function(df, output) {
+  output[["go_info"]] = renderUI({
+    if(!is.null(df)) {
+      row_index = unique(unlist(df$row_index))
+      column_index = unique(unlist(df$column_index))
+      go_id1 = rownames(full_dist_mat)[row_index]
+      go_id2 = colnames(full_dist_mat)[column_index]
+      
+      go_id = union(go_id1, go_id2)
+      
+      go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>% 
+        str_c(collapse='\n')
+      HTML(str_glue("<pre>{go_text}</pre>"))
+    }
+  })
+}
+
 
 # TODO look into HDF5 files for saving big data sets
 
@@ -19,9 +60,7 @@ library(shinyalert)
 # - GO process annotation
 # - Statistics from ANOVA/Tukey
 
-# setwd("D:/Daten/Work/Dublin/CloudStation/12_CT_APMS/kras_apms")
-# setwd("/home/junkpp/work/12_CT_APMS/kras_apms")
-# setwd("D:/Daten/Work/Dublin/CloudStation/12_CT_APMS")
+# setwd("/home/junkpp/work/other/2022-05-20_KRAS_APMS/kras_apms_vis/")
 
 df_apms <- read.csv('data/df_apms.csv', header = T)
 df_sum <- read.csv('data/df_sum.csv', header = T)
@@ -29,6 +68,22 @@ df_ontology <- read.csv('data/df_ontology.csv', header = T)
 df_annotation <- read.csv('data/df_annotation.csv', header = T)
 df_anova <- read.csv('data/df_anova.csv', header = T)
 df_gsea <- read.csv('data/df_gsea.csv', header = T)
+
+# TODO PUT OTHER DATA OBJECTS IN HERE AS WELL, CURRENTLY ONLY 
+# full_dist_mat and cluster_all from SimplifyEnrichment
+load('data/data.Rdata')
+
+# create heatmap for tests
+ht <- custom_ht_clusters(
+  full_dist_mat, 
+  cluster_all, 
+  df_gsea = df_gsea,
+  df_anova = df_anova,
+  ref_gsea_condition = 'unstim_none', 
+  # ref_anova_condition = 'unstim',
+  # ref_gsea_mut_status = 'wt', 
+  # ref_anova_mut_status = 'wt',
+  reduce_matrix = T)
 
 # color schemes from Camille's thesis:
 # TODO filter out what I don't need, maybe include more
@@ -70,9 +125,29 @@ default_gsea_pval <- 0.05
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
-
+  useShinyjs(),
+  tags$script(src = "custom_button.js"),
+  
   # Application title
   titlePanel("KRAS APMS Data"),
+  
+  ###################################
+  # TEST HEATMAP
+  # fluidRow(
+  #   title = "Original heatmap", width = 4, solidHeader = TRUE, status = "primary",
+  #   originalHeatmapOutput("ht", title = NULL)
+  # ),
+  # 
+  # fluidRow(
+  #   title = "Sub-heatmap", width = 4, solidHeader = TRUE, status = "primary",
+  #   subHeatmapOutput("ht", title = NULL)
+  # ),
+  # 
+  # htmlOutput("go_info"),
+  # 
+  # 
+  # hr(),
+  ###################################
   
   # Panel with selection and information for processes
   fluidRow(
@@ -133,6 +208,16 @@ ui <- fluidPage(
   tabsetPanel(
     id = 'main_panel',
     selected = default_panel,
+    # Overview GO processes (for now)
+    tabPanel(
+      'GO SUMMARY HEATMAP',
+      value = 'go_summary_heatmap',
+      fluidRow(title = "Original heatmap", originalHeatmapOutput("ht", title = NULL)),
+      fluidRow(title = "Sub-heatmap", subHeatmapOutput("ht", title = NULL)),
+      shinyjs::hidden(fluidRow('OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
+      htmlOutput("go_info")
+    ),
+    
     # Visualization GO Process
     tabPanel(
       'GO Process',
@@ -248,6 +333,12 @@ ui <- fluidPage(
 
 # Server logic
 server <- function(input, output, session) {
+  ##################################################################
+  # TEST HEATMAP
+  
+  makeInteractiveComplexHeatmap(input, output, session, ht, "ht",
+                                click_action = click_action, brush_action = brush_action)
+
   ##################################################################
   ## REACTIVE VALUES: data frames
   
@@ -401,6 +492,15 @@ server <- function(input, output, session) {
   })
   
   ##################################################################
+  ## REACTIVE VALUES: other
+  
+  # TODO
+  # choices for input$id
+  # reac_input_id_choices <- reactive({
+  #    
+  # })
+  
+  ##################################################################
   ## RENDERED ELEMENTS
   
   # render information about ontology term currently displayed
@@ -511,6 +611,19 @@ server <- function(input, output, session) {
       selected = selected,
     )
   })
+  
+  # add ovservers for dynamically generated GO_ID action buttons
+  observeEvent(input$js.button_clicked, {
+    uid = str_split(input$js.button_clicked, "_")
+    button = uid[[1]][1]
+    n = uid[[1]][2]
+    # for debugging...
+    print(paste0(button, " clicked on row ", n))
+    updateSelectInput(
+      inputId = 'id',
+      selected = button,
+    )
+  })
    
   # add observation to selection of individual proteins to plot
   # Updated based on which GO process is selected
@@ -558,5 +671,6 @@ server <- function(input, output, session) {
 
 
 # Run the application 
+while (!is.null(dev.list()))  dev.off()
 shinyApp(ui = ui, server = server)
 
