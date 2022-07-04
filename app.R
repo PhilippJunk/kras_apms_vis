@@ -14,13 +14,17 @@ library(shinyalert)
 # helper function for heatmap generation
 source('functions.R')
 
+# load data
+load('data/data.Rdata')
+
+
 # action function for InteractiveComplexHeatmap: 
-# need to be defined here
+# needs to be defined here
 click_action = function(df, output) {
   output[["go_info"]] = renderUI({
     if(!is.null(df)) {
-      go_id1 = rownames(full_dist_mat)[df$row_index]
-      go_id2 = colnames(full_dist_mat)[df$column_index]
+      go_id1 = rownames(dist_mat)[df$row_index]
+      go_id2 = colnames(dist_mat)[df$column_index]
 
       HTML(str_glue(
         "<pre>
@@ -40,8 +44,8 @@ brush_action = function(df, output) {
     if(!is.null(df)) {
       row_index = unique(unlist(df$row_index))
       column_index = unique(unlist(df$column_index))
-      go_id1 = rownames(full_dist_mat)[row_index]
-      go_id2 = colnames(full_dist_mat)[column_index]
+      go_id1 = rownames(dist_mat)[row_index]
+      go_id2 = colnames(dist_mat)[column_index]
 
       go_id = union(go_id1, go_id2)
 
@@ -53,34 +57,10 @@ brush_action = function(df, output) {
 }
 
 
-# TODO look into HDF5 files for saving big data sets; or Rdata files
-
-# TODO import and pre-process data
-
-# what data do I need:
-# - APMS data
-# - APMS data summed up on GO processes
-# - GO processes
-# - GO process annotation
-# - Statistics from ANOVA/Tukey
-
-# setwd("/home/junkpp/work/other/2022-05-20_KRAS_APMS/kras_apms_vis/")
-
-df_apms <- read.csv('data/df_apms.csv', header = T)
-df_sum <- read.csv('data/df_sum.csv', header = T)
-df_ontology <- read.csv('data/df_ontology.csv', header = T)
-df_annotation <- read.csv('data/df_annotation.csv', header = T)
-df_anova <- read.csv('data/df_anova.csv', header = T)
-df_gsea <- read.csv('data/df_gsea.csv', header = T)
-
-# TODO PUT OTHER DATA OBJECTS IN HERE AS WELL, CURRENTLY ONLY 
-# full_dist_mat and cluster_all from SimplifyEnrichment
-load('data/data.Rdata')
-
 # create heatmap for tests
 ht <- custom_ht_clusters(
-  full_dist_mat, 
-  cluster_all, 
+  dist_mat, 
+  clusters, 
   df_gsea = df_gsea,
   df_anova = df_anova,
   ref_gsea_condition = 'unstim_none', 
@@ -118,7 +98,6 @@ choices_anova_factors <- df_anova %>%
   pull(term)
 
 # set default settings for initializing
-default_ontology <- 'BP'
 default_seltype <- 'process'
 default_id <- 'GO:0061621'
 default_mut_status <- c('WT', 'G12C', 'G12D', 'G12V')
@@ -135,24 +114,6 @@ ui <- fluidPage(
   # Application title
   titlePanel("KRAS APMS Data"),
   
-  ###################################
-  # TEST HEATMAP
-  # fluidRow(
-  #   title = "Original heatmap", width = 4, solidHeader = TRUE, status = "primary",
-  #   originalHeatmapOutput("ht", title = NULL)
-  # ),
-  # 
-  # fluidRow(
-  #   title = "Sub-heatmap", width = 4, solidHeader = TRUE, status = "primary",
-  #   subHeatmapOutput("ht", title = NULL)
-  # ),
-  # 
-  # htmlOutput("go_info"),
-  # 
-  # 
-  # hr(),
-  ###################################
-  
   # Panel with selection and information for processes
   fluidRow(
     column(
@@ -163,16 +124,6 @@ ui <- fluidPage(
     column(
       3,
       h4('Ontology Control Panel'),
-      # Radio buttons for which type of ontology to use
-      radioButtons(
-        inputId = 'ontology',
-        label = 'Ontology', 
-        selected = default_ontology,
-        choiceValues = c('BP',
-                         'SysGO'),
-        choiceNames = c('GO - Biological Process',
-                        'SysGO')
-      ),
       # Radio buttons on how to select GO terms
       radioButtons(
         inputId = 'seltype',
@@ -351,6 +302,7 @@ server <- function(input, output, session) {
     # return data frame derived from df_apms filtered by
     # - selected GO process
     # - selected mutations
+    # TODO finish filtering by data input panel
     validate(need(input$id, 'Please select an ontology term.'),
              need(input$mut_status, 'Please select at least one mutation status'))
     df_ontology %>%
@@ -365,6 +317,7 @@ server <- function(input, output, session) {
     # return data frame derived from df_sum filtered by
     # - selected GO process
     # - selected mutations
+    # TODO finish filtering by data input panel
     validate(need(input$id, 'Please select an ontology term.'),
              need(input$mut_status, 'Please select at least one mutation status'))
     df_sum %>%
@@ -378,6 +331,7 @@ server <- function(input, output, session) {
     # - selected GO process
     # - selected p_value
     # - selected interactions
+    # TODO finish filtering by data input panel
     validate(need(input$id, 'Please select an ontology term.'))
     df_anova %>%
       filter(id == input$id) %>%
@@ -394,6 +348,7 @@ server <- function(input, output, session) {
     # return data frame derived from df_gsea filtered by
     # - selected GO process
     # - selected p_value
+    # TODO finish filtering by data input panel
     validate(need(input$id, 'Please select an ontology term.'))
     df_gsea %>%
       filter(id == input$id) %>%
@@ -413,7 +368,7 @@ server <- function(input, output, session) {
       tibble(
         label = 'Whole Set',
         condition = 'whole_set',
-        count = df_ontology %>% filter(id == input$id) %>% 
+        count = df_annotation %>% filter(id == input$id) %>% 
           pull(n_all) %>% head(1)
       ),
       dfr_apms() %>%
@@ -495,26 +450,21 @@ server <- function(input, output, session) {
     plot
   })
   
-  ##################################################################
-  ## REACTIVE VALUES: other
-  
-  # TODO
-  # choices for input$id
-  # reac_input_id_choices <- reactive({
-  #    
-  # })
-  
+
   ##################################################################
   ## RENDERED ELEMENTS
   
   # render information about ontology term currently displayed
   output$ontology_info <- renderUI({
+    # TODO potentially extract the two closest ontologies from dist_mat and 
+    # display then as selectable options here as well?
+    
     annotation <- df_annotation %>%
       filter(id == input$id) %>% head(1)
-    n_all <- df_ontology %>% 
+    n_all <- df_annotation %>% 
       filter(id == input$id) %>%
       pull(n_all) %>% head(1)
-    n_found <- df_ontology %>% 
+    n_found <- df_annotation %>% 
       filter(id == input$id) %>%
       pull(n_found) %>% head(1)
     HTML(str_c(str_c('<strong>', annotation$id, '</strong>'),
@@ -548,8 +498,10 @@ server <- function(input, output, session) {
   
   # render ANOVA table
   output$table_anova <- renderDataTable({
+    # TODO potentially rename estimate into something more meaningful
     dfr_anova() %>%
-      select(term, group1, group2, p_adj) %>%
+      select(term, group_higher, group_lower, estimate, p_adj) %>%
+      mutate(estimate = round(estimate, 2)) %>%
       mutate(p_adj = scales::scientific(p_adj)) %>%
       rename('Adj. P-value' = p_adj)
     },
@@ -562,6 +514,7 @@ server <- function(input, output, session) {
   output$table_gsea <- renderDataTable({
     dfr_gsea() %>%
       mutate(p_adj = scales::scientific(p_adj)) %>%
+      mutate(NES = round(NES, 2)) %>%
       select(id, enriched_in, enriched_against, NES, p_adj) %>%
       rename('Adj. P-value' = p_adj)
   },
@@ -574,9 +527,10 @@ server <- function(input, output, session) {
   
   # add observers to selection of processes
   # update based on process selection
+  # TODO I can probably remove this whole selection? 
+  # OR I can adapt it on the cluster specific selection??
   observe({
     df_temp <- df_annotation %>%
-      filter(ontology == input$ontology) %>%
       select(id, process) %>%
       filter(id %in% unique(df_sum$id)) %>%
       distinct
@@ -636,7 +590,6 @@ server <- function(input, output, session) {
   # TODO reset and savePlot
   observeEvent(input$button_reset, {
     # reset everything back to defaults
-    updateRadioButtons(inputId = 'ontology', selected = default_ontology)
     updateRadioButtons(inputId = 'seltype', selected = default_seltype)
     updateSelectizeInput(inputId = 'id', selected = default_id)
     updateSelectInput(inputId = 'mut_status', selected = default_mut_status)

@@ -17,13 +17,12 @@ extract_gsea_condition <- function(df_gsea, reference = 'unstim_none', all_terms
       filter(str_detect(enriched_against, str_glue('{reference}$'))) %>%
       filter(str_extract(enriched_in, '[:alnum:]+(?=_)') == str_extract(enriched_against, '[:alnum:]+(?=_)')) %>%
       mutate(group = enriched_in,
-             score = NES * -log10(p_adj)),
+             score = 1),
     df_gsea %>% filter(str_detect(enriched_in, str_glue('{reference}$'))) %>%
       filter(str_extract(enriched_in, '[:alnum:]+(?=_)') == str_extract(enriched_against, '[:alnum:]+(?=_)')) %>%
       mutate(group = enriched_against,
-             score = -(sign(NES) * -log10(p_adj)))
+             score = -1)
   ) %>% 
-    filter(ontology == 'BP') %>%
     select(id, group, score) %>% 
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
@@ -41,13 +40,12 @@ extract_gsea_mutstatus <- function(df_gsea, reference = 'wt', all_terms) {
       filter(str_detect(enriched_against, str_glue('^{reference}(?=_)'))) %>%
       filter(str_extract(enriched_in, '(?<=_)[:alnum:]+_[:alnum:]+') == str_extract(enriched_against, '(?<=_)[:alnum:]+_[:alnum:]+')) %>%
       mutate(group = enriched_in,
-             score = NES * -log10(p_adj)),
+             score = 1),
     df_gsea %>% filter(str_detect(enriched_in, str_glue('^{reference}(?=_)'))) %>%
       filter(str_extract(enriched_in, '(?<=_)[:alnum:]+_[:alnum:]+') == str_extract(enriched_against, '(?<=_)[:alnum:]+_[:alnum:]+')) %>%
       mutate(group = enriched_against,
-             score = -(sign(NES) * -log10(p_adj)))
+             score = -1)
   ) %>% 
-    filter(ontology == 'BP') %>%
     select(id, group, score) %>% 
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
@@ -57,17 +55,18 @@ extract_gsea_mutstatus <- function(df_gsea, reference = 'wt', all_terms) {
   rownames(mat) <- df$id
   mat <- mat[all_terms,,drop=F]
   mat
+  
+  
 }
 
 extract_anova_condition <- function(df_anova, reference = 'unstim', all_terms) {
-  ## TODO calculate score based on difference in mean and pvalue in the future to indicate direction!
-  df <- df_anova %>%
-    filter(str_detect(id, '^GO')) %>% # TODO not necessary if only GO 
-    filter(term == 'condition') %>%  
-    filter(group1 == reference | group2 == reference) %>% 
-    mutate(group = case_when(group1 == reference ~ group2,
-                             group2 == reference ~ group1)) %>% 
-    mutate(score = -log10(p_adj)) %>%
+  df <- df_anova %>% 
+    filter(term == 'condition') %>%
+    filter(group_higher == reference | group_lower == reference) %>%
+    mutate(group = case_when(group_higher == reference ~ group_lower,
+                             group_lower == reference ~ group_higher),
+           score = case_when(group_higher == reference ~ -1,
+                             group_lower == reference ~ 1)) %>% 
     select(id, group, score) %>%
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
@@ -76,18 +75,16 @@ extract_anova_condition <- function(df_anova, reference = 'unstim', all_terms) {
   mat <- df %>% select(where(is.numeric)) %>% as.matrix
   rownames(mat) <- df$id
   mat <- mat[all_terms,,drop=F]
-  # t(mat)
 }
 
 extract_anova_mutstatus <- function(df_anova, reference = 'wt', all_terms) {
-  ## TODO calculate score based on difference in mean and pvalue in the future to indicate direction!
-  df <- df_anova %>%
-    filter(str_detect(id, '^GO')) %>% # TODO not necessary if only GO 
-    filter(term == 'mut_status') %>%  
-    filter(group1 == reference | group2 == reference) %>% 
-    mutate(group = case_when(group1 == reference ~ group2,
-                             group2 == reference ~ group1)) %>% 
-    mutate(score = -log10(p_adj)) %>%
+  df <- df_anova %>% 
+    filter(term == 'mut_status') %>%
+    filter(group_higher == reference | group_lower == reference) %>%
+    mutate(group = case_when(group_higher == reference ~ group_lower,
+                             group_lower == reference ~ group_higher),
+           score = case_when(group_higher == reference ~ -1,
+                             group_lower == reference ~ 1)) %>% 
     select(id, group, score) %>%
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
@@ -96,14 +93,14 @@ extract_anova_mutstatus <- function(df_anova, reference = 'wt', all_terms) {
   mat <- df %>% select(where(is.numeric)) %>% as.matrix
   rownames(mat) <- df$id
   mat <- mat[all_terms,,drop=F]
-  # t(mat)
 }
 
-# TODO transform data matrices into discrete matrix
 # TODO annotation 
-# TODO integrate into shiny
-# TODO 
 # TODO rearrange columns for GSEA
+# TODO adapt widths
+# TODO figure out a way to show cluster wordclouds. Somehow. 
+# (thinking about this one, it could be a pre_arranged grid object on the right side of the heatmap,
+# with the individual heatmaps height-stacked according to the number of terms / cluster)
 
 custom_ht_clusters = function(
     dist_mat, 
@@ -114,12 +111,21 @@ custom_ht_clusters = function(
     ref_gsea_mut_status = NULL,
     ref_anova_condition = NULL,
     ref_anova_mut_status = NULL,
-    reduce_matrix = F)
-{
+    reduce_matrix = F,
+    draw_word_cloud = F) {
   
   # settings
   col = c('white', 'black')
-  min_term = 10
+  min_term = 20
+  
+  # stat = 'count'
+  stat = 'pvalue'
+  min_stat = ifelse(stat == "count", 5, 0.05)
+  exclude_words = NULL
+  max_words = 10
+  word_cloud_grob_param = list()
+  fontsize_range = c(4, 16)
+  bg_gp = gpar(fill = "#FFFFFF", col = "#AAAAAA")
   
   # init
   mat_list <- list()
@@ -198,6 +204,7 @@ custom_ht_clusters = function(
     dist_mat, 
     col = col_fun,
     name = "Similarity", 
+    heatmap_legend_param = list(title = 'GO Semantic\nSimilarity'),
     column_title = NULL,
     show_row_names = FALSE, 
     show_column_names = FALSE,
@@ -210,6 +217,23 @@ custom_ht_clusters = function(
     use_raster = T, 
     width = 10, height = 10) + 
     NULL
+  
+  # word cloud
+  if(draw_word_cloud) {
+    go_id = rownames(dist_mat)
+    
+    align_to = split(seq_along(cl), cl)
+    go_id = split(go_id, cl)
+    
+    align_to = align_to[names(align_to) != "0"]
+    go_id = go_id[names(go_id) != "0"]
+    
+    if(length(align_to)) {
+      ht = ht + rowAnnotation(keywords = anno_word_cloud_from_GO(align_to, go_id = go_id, stat = stat, min_stat = min_stat,
+                                                                 exclude_words = exclude_words, max_words = max_words, word_cloud_grob_param = word_cloud_grob_param, 
+                                                                 fontsize_range = fontsize_range, bg_gp = bg_gp))
+    } 
+  }
   
   ht@ht_list[[1]]@heatmap_param$post_fun = function(ht) {
     decorate_heatmap_body("Similarity", {
@@ -224,10 +248,16 @@ custom_ht_clusters = function(
   }
   
   # create data heatmaps
-  make_data_heatmap <- function(mat, name, width) {
+  make_data_heatmap <- function(mat, name, width, plot_legend=FALSE) {
     Heatmap(
       mat, 
-      col = circlize::colorRamp2(c(-1, 0, 1), c(scales::muted('blue'), 'white', scales::muted('red'))),
+      #col = circlize::colorRamp2(c(-1, 0, 1), c(scales::muted('blue'), 'white', scales::muted('red'))),
+      col = c('-1' = scales::muted('blue'), '0' = 'white', '1' = scales::muted('red')),
+      show_heatmap_legend = plot_legend,
+      heatmap_legend_param = list(
+        at = c(-1, 0, 1), title = 'Comparison to\nreference', 
+        legend_gp = gpar(fill = c(c(scales::muted('blue'), 'white', scales::muted('red')))),
+        labels = c('sig. lower', 'no sig. diff', 'sig. higher')),
       name = name, 
       column_title = NULL,
       show_row_names = FALSE, 
@@ -244,26 +274,31 @@ custom_ht_clusters = function(
       NULL
   }
   
+  plot_legend <- T
   if (!is.null(ref_gsea_condition)) {
-    ht_gsea_condition <- make_data_heatmap(mat_list$gsea_condition, 'GSEA_condition', 5)
+    ht_gsea_condition <- make_data_heatmap(mat_list$gsea_condition, 'GSEA_condition', 5, plot_legend)
+    plot_legend <- FALSE
   } else {
     ht_gsea_condition <- NULL
   }
   
   if (!is.null(ref_gsea_mut_status)) {
-    ht_gsea_mut_status <- make_data_heatmap(mat_list$gsea_mut_status, 'GSEA_mut_status', 5)
+    ht_gsea_mut_status <- make_data_heatmap(mat_list$gsea_mut_status, 'GSEA_mut_status', 5, plot_legend)
+    plot_legend <- FALSE
   } else {
     ht_gsea_mut_status <- NULL
   }
   
   if (!is.null(ref_anova_condition)) {
-    ht_anova_condition <- make_data_heatmap(mat_list$anova_condition, 'ANOVA_condition', 1)
+    ht_anova_condition <- make_data_heatmap(mat_list$anova_condition, 'ANOVA_condition', 1, plot_legend)
+    plot_legend <- FALSE
   } else {
     ht_anova_condition <- NULL 
   }
   
   if (!is.null(ref_anova_mut_status)) {
-    ht_anova_mut_status <- make_data_heatmap(mat_list$anova_mut_status, 'ANOVA_mut_status', 1)
+    ht_anova_mut_status <- make_data_heatmap(mat_list$anova_mut_status, 'ANOVA_mut_status', 1, plot_legend)
+    plot_legend <- FALSE
   } else {
     ht_anova_mut_status <- NULL
   }

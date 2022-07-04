@@ -38,7 +38,3 @@ df_wordcloud <- read.csv(str_glue('{data_dir}/outputs_04/df_wordcloud.csv'))
 save(df_apms, df_sum, df_ontology, df_annotation, df_gsea, df_anova, 
      dist_mat, clusters, df_wordcloud,
      file = str_glue('{app_data_dir}/data.Rdata'))
-
-
-
-
