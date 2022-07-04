@@ -1,11 +1,10 @@
 library(ComplexHeatmap)
 library(tidyverse)
 
-# TODO replace lookup with retrieval from df_annotation (which can be moved to the respective actions)
-get_go_term = function(go_id) {
-  term = suppressMessages(AnnotationDbi::select(GO.db::GO.db, keys = go_id, columns = "TERM")$TERM)
-  term[is.na(term)] = "NA"
-  term
+get_go_term <- function(go_id, df_annotation) {
+  left_join(tibble(id = go_id), df_annotation, by = 'id') %>% 
+    mutate(process = replace_na(process, 'NA')) %>%
+    pull(process)
 }
 
 ###############################################################################

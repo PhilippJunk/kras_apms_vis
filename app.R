@@ -17,7 +17,6 @@ source('functions.R')
 # load data
 load('data/data.Rdata')
 
-
 # action function for InteractiveComplexHeatmap: 
 # needs to be defined here
 click_action = function(df, output) {
@@ -29,10 +28,10 @@ click_action = function(df, output) {
       HTML(str_glue(
         "<pre>
 ## Row GO ID
-<a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1)} <button id='{go_id1}' class='go_sel_button'>Select</button>
+<a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1, df_annotation)} <button id='{go_id1}' class='go_sel_button'>Select</button>
 
 ## Column GO ID:
-<a href='http://amigo.geneontology.org/amigo/term/{go_id2}' target='_blank'>{go_id2}</a>: {get_go_term(go_id2)} <button id='{go_id2}' class='go_sel_button'>Select</button>
+<a href='http://amigo.geneontology.org/amigo/term/{go_id2}' target='_blank'>{go_id2}</a>: {get_go_term(go_id2, df_annotation)} <button id='{go_id2}' class='go_sel_button'>Select</button>
 </pre>"
       ))
     }
@@ -49,13 +48,12 @@ brush_action = function(df, output) {
 
       go_id = union(go_id1, go_id2)
 
-      go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
+      go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
         str_c(collapse='\n')
       HTML(str_glue("<pre>{go_text}</pre>"))
     }
   })
 }
-
 
 # create heatmap for tests
 ht <- custom_ht_clusters(
