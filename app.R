@@ -4,10 +4,19 @@
 ## Developed by Philipp Junk, 2022
 ##
 
+# TODO next steps
+# - recreate data selection panel (and this time make it behave properly)
+# - create interactive interface for heatmap
+# - try caching heatmap to potentially improve performance
+# - redesign ui with shinydashboard
+# - write export of plots/tables
+# - write help (either popup, or maybe a couple readthedocs pages?)
+
 library(ComplexHeatmap)
 library(InteractiveComplexHeatmap)
 library(tidyverse)
 library(shiny)
+library(shinydashboard)
 library(shinyjs)
 library(shinyalert)
 
@@ -282,6 +291,118 @@ ui <- fluidPage(
     )
   )
    
+)
+
+ui2 <- dashboardPage(
+  dashboardHeader(
+    title = 'KRAS APMS Visualization'),
+  dashboardSidebar(
+    id = 'tab',
+    sidebarMenu(
+      menuItem(text = 'Overview',
+               tabName = 'overview',
+               icon = NULL,
+               menuSubItem(text = 'Heatmap',
+                           tabName = 'overview-heatmap',
+                           icon = NULL),
+               menuSubItem(text = 'Semantic Clusters',
+                           tabName = 'overview-clusters',
+                           icon = NULL)
+               ),
+      menuItem(text = 'Invidivial GO Term',
+               tabName = 'specific',
+               icon = NULL,
+               menuSubItem(text = 'Summary',
+                           tabName = 'specific-summary',
+                           icon = NULL),
+               menuSubItem(text = 'Summed Intensities',
+                           tabName = 'specific-sum',
+                           icon = NULL),
+               menuSubItem(text = 'Individual Intensities',
+                           tabName = 'specfic-indiv',
+                           icon = NULL)
+               ),
+      hr(),
+      h4('Ontology Control Panel'),
+      # Radio buttons on how to select GO terms
+      radioButtons(
+        inputId = 'seltype',
+        label = 'Selection Type',
+        choiceValues = c('id', 'process'),
+        choiceNames = c('ID', 'Process'),
+        selected = default_seltype,
+        inline = TRUE
+      ),
+      # Input for selection of GO terms
+      selectInput(
+        inputId = 'id',
+        label = 'ID/Process',
+        choices = c(default_id),
+        selected = default_id,
+        multiple = FALSE
+      ),
+      hr(),
+      h4('Data Control Panel'),
+      # Input for selection of mutation status
+      selectInput(
+        inputId = 'mut_status',
+        label = 'Selection Mutation Status',
+        choices = c('WT', 'G12C', 'G12D', 'G12V'),
+        selected = default_mut_status,
+        multiple = TRUE
+      )
+    )
+  ),
+  dashboardBody(
+    useShinyjs(),
+    tags$script(src = "custom_button.js"),
+    tabItems(
+      tabItem(tabName = 'overview-heatmap',
+              h2('Overview: Semantic Distance Heatmap'),
+              fluidRow(title = "Original heatmap", originalHeatmapOutput("ht", title = NULL)),
+              fluidRow(title = "Sub-heatmap", subHeatmapOutput("ht", title = NULL)),
+              shinyjs::hidden(fluidRow(title = 'OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
+              htmlOutput("go_info")),
+      tabItem(tabName = 'overview-clusters',
+              h2('Overview GO Semantic Clusters'),
+              hr(),
+              h2('TODO')),
+      tabItem(tabName = 'specific-summary',
+              h2('Summary Selected GO term'),
+              fluidRow(title = 'Process Information', htmlOutput('ontology_info')),
+              fluidRow(title = 'Proteins per samples', plotOutput('plot_proteins_overview')),
+              fluidRow(title = 'Overview identified proteins', plotOutput('plot_goprocess_info'))),
+      tabItem(tabName = 'specific-sum',
+              h2('Summed up LFQ intensities'),
+              fluidRow(title = 'LFQ intensities', plotOutput('plot_lfqsum')),
+              fluidRow(title = 'ANOVA', sidebarLayout(
+                mainPanel(dataTableOutput('table_anova')),
+                sidebarPanel(sliderInput(inputId = 'anova_pval', 
+                                         label = 'Set cutoff for adjusted p-value',
+                                         min = 0.01, max = 0.1,
+                                         value = default_anova_pval),
+                             selectInput(inputId = 'anova_factors',
+                                         label = 'Select terms to display in table',
+                                         choices = choices_anova_factors,
+                                         selected = default_anova_factors,
+                                         multiple = TRUE)))),
+              fluidRow(title = 'GSEA'), sidebarLayout(
+                mainPanel(dataTableOutput('table_gsea')),
+                sidebarPanel(sliderInput(inputId = 'gsea_pval',
+                                         label = 'Set cutoff for adjusted p-value',
+                                         min = 0.01, max = 0.1, 
+                                         value = default_gsea_pval)))),
+      tabItem(tabName = 'specfic-indiv',
+              h2('Individual Proteins LFQ intensities'),
+              fluidRow(title = '', sidebarLayout(
+                mainPanel(plotOutput('plot_proteins')),
+                sidebarPanel(selectizeInput(inputId = 'indiv_proteins',
+                                            label = 'Select proteins to plot',
+                                            choices = character(),
+                                            options = list(maxItems = 10)))))
+              )
+    )
+  )
 )
 
 # Server logic
@@ -613,5 +734,5 @@ server <- function(input, output, session) {
 
 
 # Run the application 
-shinyApp(ui = ui, server = server)
+shinyApp(ui = ui2, server = server)
 
