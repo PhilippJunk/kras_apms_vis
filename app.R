@@ -113,7 +113,7 @@ default_anova_factors <- c('condition', 'mut_status', 'concentration')
 default_anova_pval <- 0.05
 default_gsea_pval <- 0.05
 
-# Define UI for application that draws a histogram
+# old ui
 ui <- fluidPage(
   useShinyjs(),
   tags$script(src = "custom_button.js"),
@@ -293,13 +293,17 @@ ui <- fluidPage(
    
 )
 
-# TODO think about potential icons??
 
+# TODO think about potential icons??
 ui2 <- dashboardPage(
   dashboardHeader(
-    title = 'KRAS APMS Visualization'),
+    title = 'KRAS APMS Visualization',
+    dropdownMenu(type = 'notifications', headerText = 'See also', 
+                 icon = NULL, badgeStatus = NULL, #TODO icon # TODO add link to article
+                 notificationItem(text = 'Source code', icon = icon('warning'), href = NULL), #TODO icon link
+                 notificationItem(text = 'Help', icon = icon('warning'), href = NULL), # TODO icon link
+                 notificationItem(text = 'Contact', icon = icon('warning'), href = NULL))), # TODO icon link
   dashboardSidebar(
-    id = 'tab',
     sidebarMenu(
       menuItem(text = 'Overview',
                tabName = 'overview',
