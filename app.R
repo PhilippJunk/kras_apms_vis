@@ -299,10 +299,10 @@ ui2 <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization',
     dropdownMenu(type = 'notifications', headerText = 'See also', 
-                 icon = NULL, badgeStatus = NULL, #TODO icon # TODO add link to article
-                 notificationItem(text = 'Source code', icon = icon('warning'), href = NULL), #TODO icon link
-                 notificationItem(text = 'Help', icon = icon('warning'), href = NULL), # TODO icon link
-                 notificationItem(text = 'Contact', icon = icon('warning'), href = NULL))), # TODO icon link
+                 icon = icon('info'), badgeStatus = NULL, # TODO add link to article
+                 notificationItem(text = 'Source code', icon = icon('github'), href = NULL), #TODO link
+                 notificationItem(text = 'Help', icon = icon('question'), href = NULL), # TODO link
+                 notificationItem(text = 'Contact', icon = icon('envelope'), href = NULL))), # TODO link
   dashboardSidebar(
     sidebarMenu(
       menuItem(text = 'Overview',
@@ -366,8 +366,10 @@ ui2 <- dashboardPage(
     tabItems(
       tabItem(tabName = 'overview-heatmap',
               h2('Overview: Semantic Distance Heatmap'),
-              fluidRow(title = "Original heatmap", originalHeatmapOutput("ht", title = NULL)),
-              fluidRow(title = "Sub-heatmap", subHeatmapOutput("ht", title = NULL)),
+              fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
+                           width = 12, title = "Original heatmap")),
+              fluidRow(box(subHeatmapOutput("ht", title = NULL),
+                           width = 12, title = "Sub-heatmap")),
               shinyjs::hidden(fluidRow(title = 'OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
               htmlOutput("go_info")),
       tabItem(tabName = 'overview-clusters',
@@ -376,38 +378,43 @@ ui2 <- dashboardPage(
               h2('TODO')),
       tabItem(tabName = 'specific-summary',
               h2('Summary Selected GO term'),
-              fluidRow(title = 'Process Information', htmlOutput('ontology_info')),
-              fluidRow(title = 'Proteins per samples', plotOutput('plot_proteins_overview')),
-              fluidRow(title = 'Overview identified proteins', plotOutput('plot_goprocess_info'))),
+              fluidRow(box(htmlOutput('ontology_info'),
+                           title = 'Process Information', width = 12)),
+              fluidRow(box(plotOutput('plot_proteins_overview'),
+                           title = 'Proteins per sample', width = 12)),
+              fluidRow(box(plotOutput('plot_goprocess_info'),
+                           title = 'Overview identified proteins', width = 12))),
       tabItem(tabName = 'specific-sum',
               h2('Summed up LFQ intensities'),
-              fluidRow(title = 'LFQ intensities', plotOutput('plot_lfqsum')),
-              fluidRow(title = 'ANOVA', sidebarLayout(
-                mainPanel(dataTableOutput('table_anova')),
-                sidebarPanel(sliderInput(inputId = 'anova_pval', 
-                                         label = 'Set cutoff for adjusted p-value',
-                                         min = 0.01, max = 0.1,
-                                         value = default_anova_pval),
-                             selectInput(inputId = 'anova_factors',
-                                         label = 'Select terms to display in table',
-                                         choices = choices_anova_factors,
-                                         selected = default_anova_factors,
-                                         multiple = TRUE)))),
-              fluidRow(title = 'GSEA'), sidebarLayout(
-                mainPanel(dataTableOutput('table_gsea')),
-                sidebarPanel(sliderInput(inputId = 'gsea_pval',
-                                         label = 'Set cutoff for adjusted p-value',
-                                         min = 0.01, max = 0.1, 
-                                         value = default_gsea_pval)))),
+              fluidRow(box(plotOutput('plot_lfqsum'),
+                           title = 'LFQ intensities', width = 12)),
+              fluidRow(box(
+                title = 'ANOVA', width = 12, collapsible = T,
+                sidebarLayout(mainPanel(dataTableOutput('table_anova')),
+                              sidebarPanel(sliderInput(inputId = 'anova_pval', 
+                                                       label = 'Set cutoff for adjusted p-value',
+                                                       min = 0.01, max = 0.1,
+                                                       value = default_anova_pval),
+                                           selectInput(inputId = 'anova_factors',
+                                                       label = 'Select terms to display in table',
+                                                       choices = choices_anova_factors,
+                                                       selected = default_anova_factors,
+                                                       multiple = TRUE))))),
+              fluidRow(box(
+                title = 'GSEA', width = 12, collapsible = T,
+                sidebarLayout(mainPanel(dataTableOutput('table_gsea')),
+                              sidebarPanel(sliderInput(inputId = 'gsea_pval',
+                                                       label = 'Set cutoff for adjusted p-value',
+                                                       min = 0.01, max = 0.1, 
+                                                       value = default_gsea_pval)))))),
       tabItem(tabName = 'specfic-indiv',
               h2('Individual Proteins LFQ intensities'),
-              fluidRow(title = '', sidebarLayout(
-                mainPanel(plotOutput('plot_proteins')),
-                sidebarPanel(selectizeInput(inputId = 'indiv_proteins',
-                                            label = 'Select proteins to plot',
-                                            choices = character(),
-                                            options = list(maxItems = 10)))))
-              )
+              fluidRow(box(
+                sidebarLayout(mainPanel(plotOutput('plot_proteins')),
+                              sidebarPanel(selectizeInput(inputId = 'indiv_proteins',
+                                           label = 'Select proteins to plot',
+                                           choices = character(),
+                                           options = list(maxItems = 10)))))))
     )
   )
 )
