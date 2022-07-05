@@ -293,6 +293,8 @@ ui <- fluidPage(
    
 )
 
+# TODO think about potential icons??
+
 ui2 <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization'),
@@ -355,7 +357,8 @@ ui2 <- dashboardPage(
   ),
   dashboardBody(
     useShinyjs(),
-    tags$script(src = "custom_button.js"),
+    tags$head(tags$link(rel = 'stylesheet', type = 'text/css', href = 'custom_css.css'),
+              tags$script(src = "custom_button.js")),
     tabItems(
       tabItem(tabName = 'overview-heatmap',
               h2('Overview: Semantic Distance Heatmap'),

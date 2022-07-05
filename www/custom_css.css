@@ -1,0 +1,19 @@
+/* make sidebar and main header sticky */
+/* adapted from https://stackoverflow.com/q/41240878/7912251 */
+
+.sidebar {
+  color: #FFF;
+  position: fixed;
+  width: 220px;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.main-header {
+  position: fixed;
+  width:100%;
+}
+
+.content {
+  padding-top: 50px;
+}
