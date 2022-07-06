@@ -89,15 +89,24 @@ mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
 mut_status_colors <- c() # TODO
 
 # get choices for inputs
+choices_mut_status <- df_apms %>%
+  pull(mut_status) %>%
+  unique %>%
+  set_names(nm = str_to_upper(.))
+
+choices_condition <- df_apms %>% 
+  pull(condition) %>%
+  unique %>%
+  set_names(nm = case_when(. != 'unstim' ~ str_to_upper(.), 
+                           T ~ str_to_title(.)))
+
 choices_cond_conc <- df_apms %>%
   select(concentration, condition) %>%
   distinct %>%
-  mutate(choice = case_when(
-    condition == 'unstim' ~ condition,
-    T ~ str_c(condition, concentration, sep='_'))) %>%
+  mutate(choice = str_c(condition, concentration, sep='_')) %>%
   pull(choice) %>%
-  set_names(nm = case_when(. != 'unstim' ~ str_to_upper(.), 
-                           T ~ str_to_title(.)))
+  set_names(nm = case_when(. != 'unstim_none' ~ str_to_upper(.), 
+                           T ~ 'Unstim'))
   
 choices_anova_factors <- df_anova %>%
   group_by(term) %>%
@@ -109,7 +118,7 @@ choices_anova_factors <- df_anova %>%
 # set default settings for initializing
 default_seltype <- 'process'
 default_id <- 'GO:0061621'
-default_mut_status <- c('WT', 'G12C', 'G12D', 'G12V')
+default_mut_status <- choices_mut_status
 default_cond_conc <- choices_cond_conc
 default_panel <- 'sum_lfq'
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
@@ -166,7 +175,7 @@ ui2 <- dashboardPage(
       h4('Data Control Panel'),
       # Input for selection of mutation status
       selectInput(inputId = 'mut_status', label = 'Selection Mutation Status',
-                  choices = c('WT', 'G12C', 'G12D', 'G12V'), 
+                  choices = choices_mut_status, 
                   selected = default_mut_status, multiple = TRUE),
       # Input for selection of condition/concentration 
       selectInput(inputId = 'cond_conc', label = 'Select Condition/Concentration',
@@ -183,29 +192,34 @@ ui2 <- dashboardPage(
               h2('Overview: Semantic Distance Heatmap'),
               fluidRow(box(width = 12, title = 'Heatmap Controls',
                            collapsible = TRUE, collapsed = TRUE,
-                           selectInput(inputId = 'ht_ref_anova_mut',
-                                       label = 'Reference group: ANOVA mutation status',
-                                       choices = '', selected = '',
-                                       multiple = FALSE),
-                           selectInput(inputId = 'ht_ref_anova_cond',
-                                       label = 'Reference group: ANOVA condition',
-                                       choices = '', selected = '',
-                                       multiple = FALSE),
-                           selectInput(inputId = 'ht_ref_gsea_mut',
-                                       label = 'Reference group: GSEA mutation status',
-                                       choices = '', selected = '',
-                                       multiple = FALSE),
-                           selectInput(inputId = 'ht_ref_gsea_cond',
-                                       label = 'Reference group: GSEA condition/concentration',
-                                       choices = '', selected = '',
-                                       multiple = FALSE),
+                           selectizeInput(inputId = 'ht_ref_anova_mut',
+                                          label = 'Reference group: ANOVA mutation status',
+                                          choices = choices_mut_status, selected = NULL,
+                                          options = list(maxItems = 1, 
+                                                         onInitialize = I('function() { this.setValue(""); }'))),
+                           selectizeInput(inputId = 'ht_ref_anova_cond',
+                                          label = 'Reference group: ANOVA condition',
+                                          choices = choices_condition, selected = NULL,
+                                          options = list(maxItems = 1, 
+                                                         onInitialize = I('function() { this.setValue(""); }'))),
+                           selectizeInput(inputId = 'ht_ref_gsea_mut',
+                                          label = 'Reference group: GSEA mutation status',
+                                          choices = choices_mut_status, selected = NULL,
+                                          options = list(maxItems = 1, 
+                                                         onInitialize = I('function() { this.setValue(""); }'))),
+                           selectizeInput(inputId = 'ht_ref_gsea_cond',
+                                          label = 'Reference group: GSEA condition/concentration',
+                                          choices = choices_cond_conc, 
+                                          selected = 'unstim_none', 
+                                          options = list(maxItems = 1)),
                            radioButtons(inputId = 'ht_reduce', 
                                         label = 'Show only significant GO terms?',
-                                        choices = c('Yes', 'No'), selected = 'Yes', inline = T),
+                                        choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
+                                        selected = TRUE, inline = TRUE),
                            radioButtons(inputId = 'ht_clusters', label = 'Show all clusters',
-                                        choices = c('Yes', 'No'), selected = 'Yes', inline = T),
-                           actionButton(inputId = 'ht_apply', label = 'Apply changes',
-                                        icon = icon('exclamation')))),
+                                        choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
+                                        selected = TRUE, inline = TRUE),
+                           actionButton(inputId = 'ht_apply', label = 'Render heatmap'))),
               fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
                            width = 12, title = "Original heatmap")),
               fluidRow(box(subHeatmapOutput("ht", title = NULL),
@@ -262,12 +276,6 @@ ui2 <- dashboardPage(
 # Server logic
 server <- function(input, output, session) {
   ##################################################################
-  # TEST HEATMAP
-  
-  makeInteractiveComplexHeatmap(input, output, session, ht, "ht",
-                                click_action = click_action, brush_action = brush_action)
-
-  ##################################################################
   ## REACTIVE VALUES: data frames
   
   # reactive subset of df_apms 
@@ -282,7 +290,7 @@ server <- function(input, output, session) {
       filter(id == input$id) %>%
       select(hgnc) %>%
       left_join(df_apms, by = 'hgnc') %>%
-      filter(mut_status %in% str_to_lower(input$mut_status)) 
+      filter(mut_status %in% input$mut_status) 
   })
   
   # reactive subset of df_sum
@@ -295,7 +303,7 @@ server <- function(input, output, session) {
              need(input$mut_status, 'Please select at least one mutation status'))
     df_sum %>%
       filter(id == input$id) %>%
-      filter(mut_status %in% str_to_lower(input$mut_status)) 
+      filter(mut_status %in% input$mut_status) 
   })
   
   # reactive subset of df_anova
@@ -333,6 +341,12 @@ server <- function(input, output, session) {
   
   ##################################################################
   ## REACTIVE VALUES: plots
+  
+  # heatmap
+  ht <- reactive({
+    #TODO maybe make df_gsea and df_anova reactive as well, and move into ht_settings?
+    make_ht(dist_mat, clusters, df_gsea, df_anova, ht_settings())
+  })
   
   # construct plot for information on GO process
   reac_plot_goprocess_info <- reactive({
@@ -498,6 +512,26 @@ server <- function(input, output, session) {
   ##################################################################
   ## OBSERVERS
   
+  # add trigger to extract settings for plotting the heatmap
+  # tied to ht_apply action button
+  ht_settings <- bindEvent({
+    reactive({
+      list(ref_anova_mut = if(input$ht_ref_anova_mut != '') {input$ht_ref_anova_mut} else {NULL},
+           ref_anova_cond = if(input$ht_ref_anova_cond != '') {input$ht_ref_anova_cond} else {NULL},
+           ref_gsea_mut = if(input$ht_ref_gsea_mut != '') {input$ht_ref_gsea_mut} else {NULL},
+           ref_gsea_cond = if(input$ht_ref_gsea_cond != '') {input$ht_ref_gsea_cond} else {NULL},
+           reduce = as.logical(input$ht_reduce),
+           clusters = as.logical(input$ht_clusters))
+    })
+  },
+  input$ht_apply,
+  ignoreNULL = FALSE)
+  
+  # heatmap
+  observe({makeInteractiveComplexHeatmap(
+    input, output, session, ht(), "ht",
+    click_action = click_action, brush_action = brush_action)})
+  
   # add observers to selection of processes
   # update based on process selection
   # TODO I can probably remove this whole selection? 
@@ -568,6 +602,7 @@ server <- function(input, output, session) {
     updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
   }) 
   
+  # TODO remove: moved to message notification
   # for modals, consider html = TRUE and maybe custom icons?
   observeEvent(input$button_help, {
     shinyalert(
@@ -577,6 +612,7 @@ server <- function(input, output, session) {
     )
   })
   
+  # TODO remove: moved to message notification
   observeEvent(input$button_impressum, {
     shinyalert(
       title = 'Impressum',

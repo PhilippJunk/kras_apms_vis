@@ -156,17 +156,13 @@ custom_ht_clusters = function(
   }
   
   # reduce matrix by showing only observations found in all sub-heatmaps from observations
-  if (reduce_matrix) {
-    if (length(mat_list) > 0) {
-      # retrieve terms to keep from matrices
-      show_terms <- mat_list %>% 
-        map(function(m) {m %>% rowSums %>% `==`(0)}) %>% 
-        transpose %>% 
-        discard(function(l) {flatten_lgl(l) %>% all}) %>% 
-        names
-    } else {
-      show_terms <- rownames(dist_mat)
-    }
+  if (reduce_matrix & length(mat_list) > 0) {
+    # retrieve terms to keep from matrices
+    show_terms <- mat_list %>% 
+      map(function(m) {m %>% abs %>% rowSums %>% `==`(0)}) %>% 
+      transpose %>% 
+      discard(function(l) {flatten_lgl(l) %>% all}) %>% 
+      names
     # filter distance matrix and clustering
     cl <- cl[rownames(dist_mat) %in% show_terms]
     dist_mat <- dist_mat[rownames(dist_mat) %in% show_terms,
@@ -305,4 +301,15 @@ custom_ht_clusters = function(
   ht_list <- (ht_anova_mut_status + (ht_anova_condition + (ht_gsea_mut_status + (ht_gsea_condition + ht))))
   
   return(invisible(ht_list))
+}
+
+make_ht <- function(dist_mat, clusters, df_gsea, df_anova, ht_settings) {
+  custom_ht_clusters(
+    dist_mat, clusters, df_gsea, df_anova,
+    ref_gsea_condition = ht_settings$ref_gsea_cond,
+    ref_gsea_mut_status = ht_settings$ref_gsea_mut,
+    ref_anova_condition = ht_settings$ref_anova_cond,
+    ref_anova_mut_status = ht_settings$ref_anova_mut,
+    reduce_matrix = ht_settings$reduce,
+    draw_word_cloud = FALSE)
 }
