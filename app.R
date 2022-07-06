@@ -283,14 +283,16 @@ server <- function(input, output, session) {
     # return data frame derived from df_apms filtered by
     # - selected GO process
     # - selected mutations
-    # TODO finish filtering by data input panel
+    # - selected combinations of conditions/concentrations
     validate(need(input$id, 'Please select an ontology term.'),
-             need(input$mut_status, 'Please select at least one mutation status'))
+             need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
     df_ontology %>%
       filter(id == input$id) %>%
       select(hgnc) %>%
       left_join(df_apms, by = 'hgnc') %>%
-      filter(mut_status %in% input$mut_status) 
+      filter(mut_status %in% input$mut_status) %>%
+      filter(str_glue('{condition}_{concentration}') %in% input$cond_conc)
   })
   
   # reactive subset of df_sum
@@ -298,12 +300,14 @@ server <- function(input, output, session) {
     # return data frame derived from df_sum filtered by
     # - selected GO process
     # - selected mutations
-    # TODO finish filtering by data input panel
+    # - selected combinations of conditions/concentrations
     validate(need(input$id, 'Please select an ontology term.'),
-             need(input$mut_status, 'Please select at least one mutation status'))
+             need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
     df_sum %>%
       filter(id == input$id) %>%
-      filter(mut_status %in% input$mut_status) 
+      filter(mut_status %in% input$mut_status) %>%
+      filter(str_glue('{condition}_{concentration}') %in% input$cond_conc)
   })
   
   # reactive subset of df_anova
