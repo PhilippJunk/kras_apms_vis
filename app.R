@@ -89,13 +89,15 @@ mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
 mut_status_colors <- c() # TODO
 
 # get choices for inputs
-choices_conditions <- df_apms %>%
+choices_cond_conc <- df_apms %>%
   select(concentration, condition) %>%
   distinct %>%
   mutate(choice = case_when(
     condition == 'unstim' ~ condition,
     T ~ str_c(condition, concentration, sep='_'))) %>%
-  pull(choice)
+  pull(choice) %>%
+  set_names(nm = case_when(. != 'unstim' ~ str_to_upper(.), 
+                           T ~ str_to_title(.)))
   
 choices_anova_factors <- df_anova %>%
   group_by(term) %>%
@@ -108,6 +110,7 @@ choices_anova_factors <- df_anova %>%
 default_seltype <- 'process'
 default_id <- 'GO:0061621'
 default_mut_status <- c('WT', 'G12C', 'G12D', 'G12V')
+default_cond_conc <- choices_cond_conc
 default_panel <- 'sum_lfq'
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
 default_anova_pval <- 0.05
@@ -151,32 +154,24 @@ ui2 <- dashboardPage(
       hr(),
       h4('Ontology Control Panel'),
       # Radio buttons on how to select GO terms
-      radioButtons(
-        inputId = 'seltype',
-        label = 'Selection Type',
-        choiceValues = c('id', 'process'),
-        choiceNames = c('ID', 'Process'),
-        selected = default_seltype,
-        inline = TRUE
-      ),
+      radioButtons(inputId = 'seltype', label = 'Selection Type', 
+                   choiceValues = c('id', 'process'), 
+                   choiceNames = c('ID', 'Process'),
+                   selected = default_seltype, inline = TRUE),
       # Input for selection of GO terms
-      selectInput(
-        inputId = 'id',
-        label = 'ID/Process',
-        choices = c(default_id),
-        selected = default_id,
-        multiple = FALSE
-      ),
+      selectInput(inputId = 'id', label = 'ID/Process', 
+                  choices = c(default_id), selected = default_id,
+                  multiple = FALSE),
       hr(),
       h4('Data Control Panel'),
       # Input for selection of mutation status
-      selectInput(
-        inputId = 'mut_status',
-        label = 'Selection Mutation Status',
-        choices = c('WT', 'G12C', 'G12D', 'G12V'),
-        selected = default_mut_status,
-        multiple = TRUE
-      )
+      selectInput(inputId = 'mut_status', label = 'Selection Mutation Status',
+                  choices = c('WT', 'G12C', 'G12D', 'G12V'), 
+                  selected = default_mut_status, multiple = TRUE),
+      # Input for selection of condition/concentration 
+      selectInput(inputId = 'cond_conc', label = 'Select Condition/Concentration',
+                  choices = choices_cond_conc, selected = default_cond_conc, 
+                  multiple = TRUE)
     )
   ),
   dashboardBody(
@@ -186,6 +181,31 @@ ui2 <- dashboardPage(
     tabItems(
       tabItem(tabName = 'overview-heatmap',
               h2('Overview: Semantic Distance Heatmap'),
+              fluidRow(box(width = 12, title = 'Heatmap Controls',
+                           collapsible = TRUE, collapsed = TRUE,
+                           selectInput(inputId = 'ht_ref_anova_mut',
+                                       label = 'Reference group: ANOVA mutation status',
+                                       choices = '', selected = '',
+                                       multiple = FALSE),
+                           selectInput(inputId = 'ht_ref_anova_cond',
+                                       label = 'Reference group: ANOVA condition',
+                                       choices = '', selected = '',
+                                       multiple = FALSE),
+                           selectInput(inputId = 'ht_ref_gsea_mut',
+                                       label = 'Reference group: GSEA mutation status',
+                                       choices = '', selected = '',
+                                       multiple = FALSE),
+                           selectInput(inputId = 'ht_ref_gsea_cond',
+                                       label = 'Reference group: GSEA condition/concentration',
+                                       choices = '', selected = '',
+                                       multiple = FALSE),
+                           radioButtons(inputId = 'ht_reduce', 
+                                        label = 'Show only significant GO terms?',
+                                        choices = c('Yes', 'No'), selected = 'Yes', inline = T),
+                           radioButtons(inputId = 'ht_clusters', label = 'Show all clusters',
+                                        choices = c('Yes', 'No'), selected = 'Yes', inline = T),
+                           actionButton(inputId = 'ht_apply', label = 'Apply changes',
+                                        icon = icon('exclamation')))),
               fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
                            width = 12, title = "Original heatmap")),
               fluidRow(box(subHeatmapOutput("ht", title = NULL),
