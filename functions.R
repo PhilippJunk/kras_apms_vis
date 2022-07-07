@@ -243,20 +243,26 @@ custom_ht_clusters = function(
   }
   
   # create data heatmaps
-  make_data_heatmap <- function(mat, name, width, plot_legend=FALSE) {
+  make_data_heatmap <- function(mat, name, 
+                                width, 
+                                plot_main_legend=FALSE, 
+                                top_anno = NULL, 
+                                bottom_anno = NULL) 
+    {
     Heatmap(
       mat, 
-      #col = circlize::colorRamp2(c(-1, 0, 1), c(scales::muted('blue'), 'white', scales::muted('red'))),
       col = c('-1' = scales::muted('blue'), '0' = 'white', '1' = scales::muted('red')),
-      show_heatmap_legend = plot_legend,
+      show_heatmap_legend = plot_main_legend,
       heatmap_legend_param = list(
         at = c(-1, 0, 1), title = 'Comparison to\nreference', 
         legend_gp = gpar(fill = c(c(scales::muted('blue'), 'white', scales::muted('red')))),
         labels = c('sig. lower', 'no sig. diff', 'sig. higher')),
+      top_annotation = top_anno,
+      bottom_annotation = bottom_anno,
       name = name, 
       column_title = NULL,
       show_row_names = FALSE, 
-      show_column_names = TRUE,
+      show_column_names = FALSE,
       show_row_dend = FALSE, 
       show_column_dend = FALSE,
       row_order = od2, 
@@ -269,31 +275,187 @@ custom_ht_clusters = function(
       NULL
   }
   
-  plot_legend <- T
+  # create legends
+  if (any(!is.na(c(ref_gsea_mut_status, ref_gsea_condition, 
+                   ref_anova_mut_status, ref_anova_condition)))) {
+    df_col_mut_status <- tibble(mut_status = c('wt', 'g12c', 'g12d', 'g12v'),
+                                labels = c('WT', 'G12C', 'G12D', 'G12V'),
+                                colors = c('#A98743', '#437C90', '#255957', '#8F2844'))
+    df_col_condition <- tibble(condition = c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa'),
+                               labels = c('Unstim', 'DMOG', 'EGF', 'IL6', 'PGE2', 'TNFA'),
+                               colors = c("#001524","#12616D","#75964A","#A1869E","#FF7D00","#78290F"))
+    df_col_concentration <- tibble(concentration = c('none', '20', '200'),
+                                   labels = c('None', '20 ng/ml', '200 ng/ml'),
+                                   colors = scales::brewer_pal(palette=11)(3))
+    
+    annotation_lgd_list <- list(
+      'Mutation Status' = list(
+        title = 'Mutation Status',
+        at = df_col_mut_status$mut_status, 
+        labels = df_col_mut_status$labels,
+        legend_gp = gpar(fill = df_col_mut_status$colors)),
+      'Condition' = list(
+        title = 'Condition',
+        at = df_col_condition$condition,
+        labels = df_col_condition$labels,
+        legend_gp = gpar(fill = df_col_condition$colors)
+      ),
+      'Concentration' = list(
+        title = 'Concentration',
+        at = df_col_concentration$concentration,
+        labels = df_col_concentration$labels,
+        legend_gp = gpar(fill = df_col_concentration$colors)
+      ))
+    plot_anno_legend_mut <- T
+    plot_anno_legend_cond <- T
+    plot_anno_legend_conc <- T
+  }
+  
+  # create data heatmaps
+  plot_main_legend <- TRUE
   if (!is.null(ref_gsea_condition)) {
-    ht_gsea_condition <- make_data_heatmap(mat_list$gsea_condition, 'GSEA_condition', 5, plot_legend)
-    plot_legend <- FALSE
+    # create annotations
+    mut_status_top <- str_extract(colnames(mat_list$gsea_condition), '^[:alnum:]+(?=_)')
+    condition_top <- str_extract(colnames(mat_list$gsea_condition), '(?<=_)[:alnum:]+(?=_)')
+    concentration_top <- str_extract(colnames(mat_list$gsea_condition), '(?<=_)[:alnum:]+$')
+    top_anno <- HeatmapAnnotation(
+      'Mutation Status' = mut_status_top, 
+      'Condition' = condition_top, 
+      'Concentration' = concentration_top,
+      col = list('Mutation Status' = structure(df_col_mut_status$colors, names=df_col_mut_status$mut_status),
+                 'Condition' = structure(df_col_condition$colors, names=df_col_condition$condition),
+                 'Concentration' = structure(df_col_concentration$colors, names=df_col_concentration$concentration)),
+      annotation_legend_param = annotation_lgd_list[c(plot_anno_legend_mut, plot_anno_legend_cond, 
+                                                      plot_anno_legend_conc)],
+      show_legend = any(plot_anno_legend_mut, plot_anno_legend_cond, plot_anno_legend_conc),
+      border = T, show_annotation_name = F)
+    
+    
+    mut_status_bottom <- mut_status_top
+    condition_bottom <- rep(str_extract(ref_gsea_condition,'^[:alnum:]+(?=_)'), 
+                            length(colnames(mat_list$gsea_condition)))
+    concentration_bottom <- rep(str_extract(ref_gsea_condition, '(?<=_)[:alnum:]+$'), 
+                                length(colnames(mat_list$gsea_condition)))
+    bottom_anno <- HeatmapAnnotation(
+      'Mutation Status' = mut_status_bottom, 
+      'Condition' = condition_bottom, 
+      'Concentration' = concentration_bottom,
+      col = list('Mutation Status' = structure(df_col_mut_status$colors, names=df_col_mut_status$mut_status),
+                 'Condition' = structure(df_col_condition$colors, names=df_col_condition$condition),
+                 'Concentration' = structure(df_col_concentration$colors, names=df_col_concentration$concentration)),
+      show_legend = F, 
+      border = T, show_annotation_name = F)
+    
+    # create heatmap
+    ht_gsea_condition <- make_data_heatmap(mat_list$gsea_condition, 
+                                           'GSEA_condition', 5, 
+                                           plot_main_legend,
+                                           top_anno, bottom_anno)
+    # update legend settings
+    plot_main_legend <- FALSE
+    plot_anno_legend_mut <- FALSE
+    plot_anno_legend_cond <- FALSE
+    plot_anno_legend_conc <- FALSE
   } else {
     ht_gsea_condition <- NULL
   }
   
   if (!is.null(ref_gsea_mut_status)) {
-    ht_gsea_mut_status <- make_data_heatmap(mat_list$gsea_mut_status, 'GSEA_mut_status', 5, plot_legend)
-    plot_legend <- FALSE
+    # create annotations
+    mut_status_top <- str_extract(colnames(mat_list$gsea_mut_status), '^[:alnum:]+(?=_)')
+    condition_top <- str_extract(colnames(mat_list$gsea_mut_status), '(?<=_)[:alnum:]+(?=_)')
+    concentration_top <- str_extract(colnames(mat_list$gsea_mut_status), '(?<=_)[:alnum:]+$')
+    top_anno <- HeatmapAnnotation(
+      'Mutation Status' = mut_status_top, 
+      'Condition' = condition_top, 
+      'Concentration' = concentration_top,
+      col = list('Mutation Status' = structure(df_col_mut_status$colors, names=df_col_mut_status$mut_status),
+                 'Condition' = structure(df_col_condition$colors, names=df_col_condition$condition),
+                 'Concentration' = structure(df_col_concentration$colors, names=df_col_concentration$concentration)),
+      annotation_legend_param = annotation_lgd_list[c(plot_anno_legend_mut, plot_anno_legend_cond, 
+                                                      plot_anno_legend_conc)],
+      show_legend = any(plot_anno_legend_mut, plot_anno_legend_cond, plot_anno_legend_conc),
+      border = T, show_annotation_name = F)
+    
+    
+    mut_status_bottom <-rep(ref_gsea_mut_status, length(colnames(mat_list$gsea_mut_status)))
+    condition_bottom <- condition_top
+    concentration_bottom <- concentration_top
+    bottom_anno <- HeatmapAnnotation(
+      'Mutation Status' = mut_status_bottom, 
+      'Condition' = condition_bottom, 
+      'Concentration' = concentration_bottom,
+      col = list('Mutation Status' = structure(df_col_mut_status$colors, names=df_col_mut_status$mut_status),
+                 'Condition' = structure(df_col_condition$colors, names=df_col_condition$condition),
+                 'Concentration' = structure(df_col_concentration$colors, names=df_col_concentration$concentration)),
+      show_legend = FALSE,
+      border = T, show_annotation_name = F)
+    
+    ht_gsea_mut_status <- make_data_heatmap(mat_list$gsea_mut_status, 
+                                            'GSEA_mut_status', 5, 
+                                            plot_main_legend,
+                                            top_anno, bottom_anno)
+    plot_main_legend <- FALSE
+    plot_anno_legend_mut <- FALSE
+    plot_anno_legend_cond <- FALSE
+    plot_anno_legend_conc <- FALSE
   } else {
     ht_gsea_mut_status <- NULL
   }
   
   if (!is.null(ref_anova_condition)) {
-    ht_anova_condition <- make_data_heatmap(mat_list$anova_condition, 'ANOVA_condition', 1, plot_legend)
-    plot_legend <- FALSE
+    # create annotations
+    condition_top <- colnames(mat_list$anova_condition)
+    top_anno <- HeatmapAnnotation(
+      'Condition' = condition_top, 
+      col = list('Condition' = structure(df_col_condition$colors, names=df_col_condition$condition)),
+      annotation_legend_param = annotation_lgd_list[c(F, plot_anno_legend_cond, F)],
+      show_legend = plot_anno_legend_cond,
+      border = T, show_annotation_name = F)
+    
+    condition_bottom <- rep(ref_anova_condition, length(condition_top))
+    bottom_anno <- HeatmapAnnotation(
+      'Condition' = condition_bottom, 
+      col = list('Condition' = structure(df_col_condition$colors, names=df_col_condition$condition)),
+      annotation_legend_param = annotation_lgd_list[c(F, plot_anno_legend_cond, F)],
+      show_legend = FALSE,
+      border = T, show_annotation_name = F)
+    
+    
+    ht_anova_condition <- make_data_heatmap(mat_list$anova_condition, 
+                                            'ANOVA_condition', 1,
+                                            plot_main_legend,
+                                            top_anno, bottom_anno)
+    plot_main_legend <- FALSE
+    plot_anno_legend_cond <- FALSE
   } else {
     ht_anova_condition <- NULL 
   }
   
   if (!is.null(ref_anova_mut_status)) {
-    ht_anova_mut_status <- make_data_heatmap(mat_list$anova_mut_status, 'ANOVA_mut_status', 1, plot_legend)
-    plot_legend <- FALSE
+    # create annotations
+    mut_status_top <- colnames(mat_list$anova_mut_status)
+    top_anno <- HeatmapAnnotation(
+      'Mutation Status' = mut_status_top, 
+      col = list('Mutation Status' = structure(df_col_mut_status$colors, names=df_col_mut_status$mut_status)),
+      annotation_legend_param = annotation_lgd_list[c(plot_anno_legend_mut, F, F)],
+      show_legend = plot_anno_legend_mut,
+      border = T, show_annotation_name = F)
+    
+    mut_status_bottom <- rep(ref_anova_mut_status, length(mut_status_top))
+    bottom_anno <- HeatmapAnnotation(
+      'Mutation Status' = mut_status_bottom, 
+      col = list('Mutation Status' = structure(df_col_mut_status$colors, names=df_col_mut_status$mut_status)),
+      annotation_legend_param = annotation_lgd_list[c(plot_anno_legend_mut, F, F)],
+      show_legend = FALSE,
+      border = T, show_annotation_name = F)
+    
+    ht_anova_mut_status <- make_data_heatmap(mat_list$anova_mut_status, 
+                                             'ANOVA_mut_status', 1, 
+                                             plot_main_legend,
+                                             top_anno, bottom_anno)
+    plot_main_legend <- FALSE
+    plot_anno_legend_mut <- FALSE
   } else {
     ht_anova_mut_status <- NULL
   }

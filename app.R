@@ -64,17 +64,19 @@ brush_action = function(df, output) {
   })
 }
 
+# TODO remove
 # create heatmap for tests
 ht <- custom_ht_clusters(
   dist_mat, 
   clusters, 
   df_gsea = df_gsea,
   df_anova = df_anova,
-  ref_gsea_condition = 'unstim_none', 
+  ref_gsea_condition = 'unstim_none',
   # ref_anova_condition = 'unstim',
-  # ref_gsea_mut_status = 'wt', 
+  # ref_gsea_mut_status = 'wt',
   # ref_anova_mut_status = 'wt',
   reduce_matrix = T)
+draw(ht)
 
 # color schemes from Camille's thesis:
 # TODO filter out what I don't need, maybe include more
@@ -84,9 +86,9 @@ conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
 condition_colors <- c("#001524","#12616D","#75964A",
                       "#A1869E","#FF7D00","#78290F")
 
-mut_status <- c('wt', '12c', '12d', '12v')
+mut_status <- c('wt', 'g12c', 'g12d', 'g12v')
 mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
-mut_status_colors <- c() # TODO
+mut_status_colors <- c('#A98743', '#437C90', '#255957', '#8F2844')
 
 # get choices for inputs
 choices_mut_status <- df_apms %>%
