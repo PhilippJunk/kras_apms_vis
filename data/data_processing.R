@@ -14,19 +14,22 @@ library(tidyverse)
 ###############################################################################
 # Import data
 
-# LFQi
-df_apms <- read.csv(str_glue('{data_dir}/outputs_01/df_apms.csv'))
-df_sum <- read.csv(str_glue('{data_dir}/outputs_03/df_sum.csv'))
-
-# GO data
-df_ontology <- read.csv(str_glue('{data_dir}/outputs_03/df_ontology.csv'))
-df_annotation <- read.csv(str_glue('{data_dir}/outputs_03/df_annotation.csv'))
-
 # Diff analysis
 df_gsea <- read.csv(str_glue('{data_dir}/outputs_02/df_gsea.csv')) %>%
   filter(p_adj <= 0.1)
 df_anova <- read.csv(str_glue('{data_dir}/outputs_03/df_anova.csv')) %>% 
   filter(p_adj <= 0.1)
+
+# LFQi
+df_apms <- read.csv(str_glue('{data_dir}/outputs_01/df_apms.csv'))
+df_sum <- read.csv(str_glue('{data_dir}/outputs_03/df_sum.csv')) %>%
+  filter(id %in% unique(c(df_gsea$id, df_anova$id)))
+
+# GO data
+df_ontology <- read.csv(str_glue('{data_dir}/outputs_03/df_ontology.csv')) %>%
+  filter(id %in% unique(c(df_gsea$id, df_anova$id)))
+df_annotation <- read.csv(str_glue('{data_dir}/outputs_03/df_annotation.csv')) %>%
+  filter(id %in% unique(c(df_gsea$id, df_anova$id)))
 
 # GO semantic analysis
 load(str_glue('{data_dir}/outputs_04/dist_mat.Rdata'))
