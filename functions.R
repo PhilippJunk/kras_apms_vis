@@ -94,12 +94,8 @@ extract_anova_mutstatus <- function(df_anova, reference = 'wt', all_terms) {
   mat <- mat[all_terms,,drop=F]
 }
 
-# TODO annotation 
 # TODO rearrange columns for GSEA
 # TODO adapt widths
-# TODO figure out a way to show cluster wordclouds. Somehow. 
-# (thinking about this one, it could be a pre_arranged grid object on the right side of the heatmap,
-# with the individual heatmaps height-stacked according to the number of terms / cluster)
 
 custom_ht_clusters = function(
     dist_mat, 
@@ -111,6 +107,8 @@ custom_ht_clusters = function(
     ref_anova_condition = NULL,
     ref_anova_mut_status = NULL,
     reduce_matrix = F,
+    all_clusters = T,
+    selected_clusters = numeric(),
     draw_word_cloud = F) {
   
   # settings
@@ -128,6 +126,15 @@ custom_ht_clusters = function(
   
   # init
   mat_list <- list()
+  
+  # if not all clusters to plot, filter distance matrix and clusters now
+  if (!all_clusters & length(selected_clusters) > 0) {
+    dist_mat <- dist_mat[
+      cl %in% selected_clusters,
+      cl %in% selected_clusters
+    ]
+    cl <- cl[cl %in% selected_clusters]
+  }
   
   # get data if references are specified
   if (!is.null(ref_gsea_condition)) {
@@ -473,5 +480,7 @@ make_ht <- function(dist_mat, clusters, df_gsea, df_anova, ht_settings) {
     ref_anova_condition = ht_settings$ref_anova_cond,
     ref_anova_mut_status = ht_settings$ref_anova_mut,
     reduce_matrix = ht_settings$reduce,
+    all_clusters = ht_settings$all_clusters,
+    selected_clusters = ht_settings$selected_clusters,
     draw_word_cloud = FALSE)
 }

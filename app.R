@@ -223,6 +223,11 @@ ui2 <- dashboardPage(
                            radioButtons(inputId = 'ht_clusters', label = 'Show all clusters',
                                         choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
                                         selected = TRUE, inline = TRUE),
+                           conditionalPanel(condition = 'input.ht_clusters == "FALSE"',
+                                            selectInput(inputId = 'ht_cluster_sel',
+                                                        label = 'Select clusters to show',
+                                                        choices = unique(clusters),
+                                                        selected = 1, multiple = T)),
                            actionButton(inputId = 'ht_apply', label = 'Render heatmap'))),
               fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
                            width = 12, title = "Original heatmap")),
@@ -359,7 +364,6 @@ server <- function(input, output, session) {
   
   # heatmap
   ht <- reactive({
-    #TODO maybe make df_gsea and df_anova reactive as well, and move into ht_settings?
     make_ht(dist_mat, clusters, df_gsea, df_anova, ht_settings())
   })
   
@@ -581,7 +585,8 @@ server <- function(input, output, session) {
            ref_gsea_mut = if(input$ht_ref_gsea_mut != '') {input$ht_ref_gsea_mut} else {NULL},
            ref_gsea_cond = if(input$ht_ref_gsea_cond != '') {input$ht_ref_gsea_cond} else {NULL},
            reduce = as.logical(input$ht_reduce),
-           clusters = as.logical(input$ht_clusters))
+           all_clusters = as.logical(input$ht_clusters),
+           selected_clusters = as.numeric(input$ht_cluster_sel))
     })
   },
   input$ht_apply,
