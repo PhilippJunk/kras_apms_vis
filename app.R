@@ -33,18 +33,34 @@ load('data/data.Rdata')
 click_action = function(df, output) {
   output[["go_info_heatmap"]] = renderUI({
     if(!is.null(df)) {
-      go_id1 = rownames(dist_mat)[df$row_index]
-      go_id2 = colnames(dist_mat)[df$column_index]
-
-      HTML(str_glue(
-        "<pre>
+      df <- as_tibble(df)
+      
+      # distinguish between click on simiarlity heatmap and click on data heatmaps
+      if (df$heatmap == 'Similarity') {
+        go_id1 = df$row_label
+        go_id2 = df$column_label
+        
+        HTML(str_glue(
+          "<pre>
 ## Row GO ID
 <a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1, df_annotation)} <button id='{go_id1}' class='go_sel_button'>Select</button>
 
 ## Column GO ID:
 <a href='http://amigo.geneontology.org/amigo/term/{go_id2}' target='_blank'>{go_id2}</a>: {get_go_term(go_id2, df_annotation)} <button id='{go_id2}' class='go_sel_button'>Select</button>
 </pre>"
-      ))
+        ))
+      } else {
+        go_id1 = df$row_label
+
+        HTML(str_glue(
+          "<pre>
+## Row GO ID
+<a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1, df_annotation)} <button id='{go_id1}' class='go_sel_button'>Select</button>
+</pre>"
+        ))
+      }
+      
+
     }
   })
 }
@@ -52,12 +68,18 @@ click_action = function(df, output) {
 brush_action = function(df, output) {
   output[["go_info_heatmap"]] = renderUI({
     if(!is.null(df)) {
-      row_index = unique(unlist(df$row_index))
-      column_index = unique(unlist(df$column_index))
-      go_id1 = rownames(dist_mat)[row_index]
-      go_id2 = colnames(dist_mat)[column_index]
-
-      go_id = union(go_id1, go_id2)
+      df <- as_tibble(df)
+      # extract GO IDs from brushed area
+      go_id <- c(df %>% filter(heatmap == 'Similarity') %>%
+                   select(row_label, column_label) %>% 
+                   as.list %>% 
+                   flatten %>% 
+                   flatten_chr,
+                 df %>% filter(heatmap != 'Similarity') %>%
+                   select(row_label) %>% 
+                   as.list %>%
+                   flatten %>% 
+                   flatten_chr)
 
       go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
         str_c(collapse='\n')
@@ -131,7 +153,7 @@ default_gsea_pval <- 0.05
 
 
 # TODO think about potential icons??
-ui2 <- dashboardPage(
+ui <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization',
     dropdownMenu(type = 'notifications', headerText = 'See also', 
@@ -228,11 +250,13 @@ ui2 <- dashboardPage(
                                                         label = 'Select clusters to show',
                                                         choices = unique(clusters),
                                                         selected = 1, multiple = T)),
-                           actionButton(inputId = 'ht_apply', label = 'Render heatmap'))),
+                           fluidRow(column(2 ,actionButton(inputId = 'ht_apply', label = 'Render heatmap')),
+                                    column(10, hidden(span(style = 'color:red', id = 'error_ht',
+                                                           'Rendering the heatmap with the current settings not possible. Please choose other settings.')))))),
               fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
-                           width = 12, title = "Original heatmap")),
+                           id = 'orig_ht', width = 12, title = "Original heatmap")),
               fluidRow(box(subHeatmapOutput("ht", title = NULL),
-                           width = 12, title = "Sub-heatmap")),
+                           id = 'sub_ht', width = 12, title = "Sub-heatmap")),
               shinyjs::hidden(fluidRow(title = 'OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
               fluidRow(box(htmlOutput("go_info_heatmap"),
                            title = 'GO terms in selected area', width = 12, 
@@ -593,9 +617,22 @@ server <- function(input, output, session) {
   ignoreNULL = FALSE)
   
   # heatmap
-  observe({makeInteractiveComplexHeatmap(
-    input, output, session, ht(), "ht",
-    click_action = click_action, brush_action = brush_action)})
+  observe({
+    if (!is.null(ht())) {
+      shinyjs::show('orig_ht')
+      shinyjs::show('sub_ht')
+      shinyjs::hide('error_ht')
+      
+      makeInteractiveComplexHeatmap(
+        input, output, session, ht(), "ht",
+        click_action = click_action, brush_action = brush_action)
+    }
+    else {
+      shinyjs::hide('orig_ht')
+      shinyjs::hide('sub_ht')
+      shinyjs::show('error_ht')
+    }
+  })
   
   # add observers to selection of processes
   # update based on process selection
@@ -689,5 +726,5 @@ server <- function(input, output, session) {
 
 
 # Run the application 
-shinyApp(ui = ui2, server = server)
+shinyApp(ui = ui, server = server)
 

@@ -23,9 +23,9 @@ extract_gsea_condition <- function(df_gsea, reference = 'unstim_none', all_terms
              score = -1)
   ) %>% 
     select(id, group, score) %>% 
-    full_join(tibble(id = all_terms), by='id') %>% 
+    full_join(tibble(id = all_terms), by='id') %>%
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
-    select(-'NA') %>% 
+    select(-matches('NA')) %>% 
     filter(id %in% all_terms)
   mat <- df %>% select(where(is.numeric)) %>% as.matrix
   rownames(mat) <- df$id
@@ -48,14 +48,12 @@ extract_gsea_mutstatus <- function(df_gsea, reference = 'wt', all_terms) {
     select(id, group, score) %>% 
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
-    select(-'NA') %>% 
+    select(-matches('NA')) %>% 
     filter(id %in% all_terms)
   mat <- df %>% select(where(is.numeric)) %>% as.matrix
   rownames(mat) <- df$id
   mat <- mat[all_terms,,drop=F]
   mat
-  
-  
 }
 
 extract_anova_condition <- function(df_anova, reference = 'unstim', all_terms) {
@@ -69,7 +67,7 @@ extract_anova_condition <- function(df_anova, reference = 'unstim', all_terms) {
     select(id, group, score) %>%
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
-    select(-'NA') %>% 
+    select(-matches('NA')) %>% 
     filter(id %in% all_terms)
   mat <- df %>% select(where(is.numeric)) %>% as.matrix
   rownames(mat) <- df$id
@@ -87,7 +85,7 @@ extract_anova_mutstatus <- function(df_anova, reference = 'wt', all_terms) {
     select(id, group, score) %>%
     full_join(tibble(id = all_terms), by='id') %>% 
     pivot_wider(names_from = group, values_from = score, values_fill = 0) %>% 
-    select(-'NA') %>% 
+    select(-matches('NA')) %>% 
     filter(id %in% all_terms)
   mat <- df %>% select(where(is.numeric)) %>% as.matrix
   rownames(mat) <- df$id
@@ -131,7 +129,8 @@ custom_ht_clusters = function(
   if (!all_clusters & length(selected_clusters) > 0) {
     dist_mat <- dist_mat[
       cl %in% selected_clusters,
-      cl %in% selected_clusters
+      cl %in% selected_clusters,
+      drop=F
     ]
     cl <- cl[cl %in% selected_clusters]
   }
@@ -173,12 +172,18 @@ custom_ht_clusters = function(
     # filter distance matrix and clustering
     cl <- cl[rownames(dist_mat) %in% show_terms]
     dist_mat <- dist_mat[rownames(dist_mat) %in% show_terms,
-                         colnames(dist_mat) %in% show_terms]
+                         colnames(dist_mat) %in% show_terms,
+                         drop=F]
     # filter score matrices
     for (i in 1:length(mat_list)) {
       mat <- mat_list[[i]]
-      mat_list[[i]] <- mat[rownames(mat) %in% show_terms,]
+      mat_list[[i]] <- mat[rownames(mat) %in% show_terms,,drop=F]
     }
+  }
+  
+  # check that there is still data left to make a heatmap of
+  if (nrow(dist_mat) == 0 | ncol(dist_mat) == 0) {
+    return(NULL)
   }
   
   # color function for similarity matrix
