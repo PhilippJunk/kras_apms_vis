@@ -115,6 +115,12 @@ mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
 mut_status_colors <- c('#A98743', '#437C90', '#255957', '#8F2844')
 
 # get choices for inputs
+choices_clusters <- tibble(cluster = clusters) %>%
+  count(cluster, name = 'count') %>% 
+  arrange(-count) %>%
+  filter(count >= 20) %>%
+  pull(cluster)
+  
 choices_mut_status <- df_apms %>%
   pull(mut_status) %>%
   unique %>%
@@ -187,7 +193,7 @@ ui <- dashboardPage(
                            icon = NULL)
                ),
       hr(),
-      h4('Ontology Control Panel'),
+      h4('Ontology Control Panel', style = 'text-align:center'),
       # Radio buttons on how to select GO terms
       radioButtons(inputId = 'seltype', label = 'Selection Type', 
                    choiceValues = c('id', 'process'), 
@@ -198,7 +204,7 @@ ui <- dashboardPage(
                   choices = c(default_id), selected = default_id,
                   multiple = FALSE),
       hr(),
-      h4('Data Control Panel'),
+      h4('Data Control Panel', style = 'text-align:center'),
       # Input for selection of mutation status
       selectInput(inputId = 'mut_status', label = 'Selection Mutation Status',
                   choices = choices_mut_status, 
@@ -215,7 +221,7 @@ ui <- dashboardPage(
               tags$script(src = "custom_button.js")),
     tabItems(
       tabItem(tabName = 'overview-heatmap',
-              h2('Overview: Semantic Distance Heatmap'),
+              h2('Overview Semantic Distance Heatmap'),
               fluidRow(box(width = 12, title = 'Heatmap Controls',
                            collapsible = TRUE, collapsed = TRUE,
                            selectizeInput(inputId = 'ht_ref_anova_mut',
@@ -238,23 +244,24 @@ ui <- dashboardPage(
                                           choices = choices_cond_conc, 
                                           selected = 'unstim_none', 
                                           options = list(maxItems = 1)),
+                           hr(),
                            radioButtons(inputId = 'ht_reduce', 
-                                        label = 'Show only significant GO terms?',
+                                        label = 'Only show GO terms that are signficantly different in the data shown in the heatmap?',
                                         choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
                                         selected = TRUE, inline = TRUE),
-                           radioButtons(inputId = 'ht_clusters', label = 'Show all clusters',
+                           radioButtons(inputId = 'ht_clusters', label = 'Show all clusters?',
                                         choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
                                         selected = TRUE, inline = TRUE),
                            conditionalPanel(condition = 'input.ht_clusters == "FALSE"',
                                             selectInput(inputId = 'ht_cluster_sel',
                                                         label = 'Select clusters to show',
-                                                        choices = unique(clusters),
+                                                        choices = choices_clusters,
                                                         selected = 1, multiple = T)),
                            fluidRow(column(2 ,actionButton(inputId = 'ht_apply', label = 'Render heatmap')),
                                     column(10, hidden(span(style = 'color:red', id = 'error_ht',
                                                            'Rendering the heatmap with the current settings not possible. Please choose other settings.')))))),
               fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
-                           id = 'orig_ht', width = 12, title = "Original heatmap")),
+                           id = 'orig_ht', width = 12, title = "Full heatmap")),
               fluidRow(box(subHeatmapOutput("ht", title = NULL),
                            id = 'sub_ht', width = 12, title = "Sub-heatmap")),
               shinyjs::hidden(fluidRow(title = 'OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
@@ -263,9 +270,6 @@ ui <- dashboardPage(
                            collapsible = T))),
       tabItem(tabName = 'overview-clusters',
               h2('Overview GO Semantic Clusters'),
-              hr(),
-              fluidRow(box(dataTableOutput('table_clusters_overview'),
-                           title = 'Overview Clusters', width = 12)),
               uiOutput('cluster_wc_tabs'),
               fluidRow(box(htmlOutput('go_info_clusters'),
                            title = 'GO terms in selected cluster', width = 12, 
@@ -275,15 +279,15 @@ ui <- dashboardPage(
               fluidRow(box(htmlOutput('ontology_info'),
                            title = 'Process Information', width = 12)),
               fluidRow(box(plotOutput('plot_proteins_overview'),
-                           title = 'Proteins per sample', width = 12)),
+                           title = 'Samples per protein', width = 12)),
               fluidRow(box(plotOutput('plot_goprocess_info'),
-                           title = 'Overview identified proteins', width = 12))),
+                           title = 'Number of identified proteins', width = 12))),
       tabItem(tabName = 'specific-sum',
-              h2('Summed up LFQ intensities'),
+              h2('Summed LFQ intensities'),
               fluidRow(box(plotOutput('plot_lfqsum'),
-                           title = 'LFQ intensities', width = 12)),
+                           title = 'Summed LFQ intensities', width = 12)),
               fluidRow(box(
-                title = 'ANOVA', width = 12, collapsible = T,
+                title = 'Differential Analysis: ANOVA', width = 12, collapsible = T,
                 sidebarLayout(mainPanel(dataTableOutput('table_anova')),
                               sidebarPanel(sliderInput(inputId = 'anova_pval', 
                                                        label = 'Set cutoff for adjusted p-value',
@@ -295,7 +299,7 @@ ui <- dashboardPage(
                                                        selected = default_anova_factors,
                                                        multiple = TRUE))))),
               fluidRow(box(
-                title = 'GSEA', width = 12, collapsible = T,
+                title = 'Differential Analysis: GSEA', width = 12, collapsible = T,
                 sidebarLayout(mainPanel(dataTableOutput('table_gsea')),
                               sidebarPanel(sliderInput(inputId = 'gsea_pval',
                                                        label = 'Set cutoff for adjusted p-value',
@@ -308,7 +312,8 @@ ui <- dashboardPage(
                               sidebarPanel(selectizeInput(inputId = 'indiv_proteins',
                                            label = 'Select proteins to plot',
                                            choices = character(),
-                                           options = list(maxItems = 10)))))))
+                                           options = list(maxItems = 10)))),
+                width = 12)))
     )
   )
 )
@@ -391,31 +396,54 @@ server <- function(input, output, session) {
     make_ht(dist_mat, clusters, df_gsea, df_anova, ht_settings())
   })
   
+  # construct plot for overview over individual proteins
+  reac_plot_proteins_overview <- reactive({
+    df <- dfr_apms() %>%
+      group_by(hgnc) %>%
+      summarise(count = n()) %>%
+      ungroup %>%
+      arrange(desc(count)) %>%
+      mutate(hgnc = factor(hgnc, levels = hgnc))
+    n_total <- df$hgnc %>% unique %>% length
+    df <- df %>% 
+      slice_max(count, n=50)
+    n_here <- df$hgnc %>% unique %>% length
+    
+    ggplot(df, aes(x = hgnc, y = count)) +
+      geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      labs(x = 'HGNC', y = 'Number of samples',
+           caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
+      theme_minimal() +
+      NULL
+  })
+  
   # construct plot for information on GO process
   reac_plot_goprocess_info <- reactive({
     # TODO include custom color set
     df <- bind_rows(
       tibble(
-        label = 'Whole Set',
+        group = 'Whole Set',
         condition = 'whole_set',
         count = df_annotation %>% filter(id == input$id) %>% 
           pull(n_all) %>% head(1)
       ),
       dfr_apms() %>%
-        group_by(label,group, mut_status, condition, concentration) %>%
+        group_by(group, mut_status, condition, concentration) %>%
         summarise(count = n()) %>%
         ungroup %>%
         arrange(-count) %>%
-        select(label, condition, count)
+        select(group, condition, count)
     ) %>%
-      mutate(label = factor(label, levels = unique(label)))
+      mutate(group = factor(group, levels = unique(group)))
     df %>%
-      ggplot(aes(x = label, y = count, fill = condition)) +
+      ggplot(aes(x = group, y = count, fill = condition)) +
       geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
       scale_fill_manual(values = c(condition_colors, 'white'), 
                         breaks = c(conditions, 'whole_set'), 
                         labels = c(conditions_hq, 'Whole Set')) +
-      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      labs(x = 'Group', y = 'Number of proteins', full = 'Condition') +
       theme_minimal() +
       NULL
   })
@@ -423,29 +451,16 @@ server <- function(input, output, session) {
   # construct plot of sum of LFQ intensities 
   reac_plot_lfqsum <- reactive({
     dfr_sum() %>%
+      mutate(mut_status = str_to_upper(mut_status)) %>%
+      mutate(condition = case_when(condition == 'unstim' ~ condition,
+                                   T ~ str_to_upper(condition))) %>%
       ggplot(aes(x = mut_status, y = sum_LFQ, fill=mut_status)) +
       geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
       facet_grid(cols = vars(condition, concentration)) +
-      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      labs(x = 'Mutation Status', y = 'log2(Sum(LFQ))', fill = 'Mutation Status') +
       theme_bw(base_size = 15) +
-      NULL
-  })
-  
-  # construct plot for overview over individual proteins
-  reac_plot_proteins_overview <- reactive({
-    dfr_apms() %>%
-      group_by(hgnc) %>%
-      summarise(count = n()) %>%
-      ungroup %>%
-      arrange(desc(count)) %>%
-      mutate(hgnc = factor(hgnc, levels = hgnc)) %>% 
-      ggplot(aes(x = hgnc, y = count)) +
-      geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
-      scale_x_discrete(guide = guide_axis(angle = 90)) +
-      labs(x = 'HGNC', y = 'Number of samples',
-           caption = 'Showing X of X proteins.') + # TODO
-      theme_minimal() +
       NULL
   })
   
@@ -455,14 +470,16 @@ server <- function(input, output, session) {
     plot <- dfr_apms() %>%
       filter(hgnc %in% input$indiv_proteins) %>%
       mutate(hgnc = factor(hgnc, levels = input$indiv_proteins)) %>%
+      mutate(mut_status = str_to_upper(mut_status)) %>%
       ggplot(aes(x = str_glue('{condition}_{concentration}'), 
                  y = log2(LFQ), fill = condition)) +
       geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(position = position_jitter(height=0, width=0.2)) +
-      scale_x_discrete(guide = guide_axis(angle = 90)) +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
       scale_fill_manual(values = condition_colors, 
                         breaks = conditions, 
                         labels = conditions_hq) +
+      labs(x = 'Condition/Concentration', y = 'log2(LFQ)', fill = 'Condition') +
       theme_bw() +
       NULL
     
@@ -484,35 +501,26 @@ server <- function(input, output, session) {
   ##################################################################
   ## RENDERED ELEMENTS
   
-  # render table of summarised GO semantic clusers
-  output$table_clusters_overview <- renderDataTable({
-    df_wordcloud %>% group_by(cluster) %>%
-      slice_min(padj, n=3) %>%
-      summarise(summary = str_c(keyword, collapse = '; ')) %>%
-      ungroup %>% 
-      inner_join(tibble(cluster = clusters) %>%
-                   count(cluster, name = 'count'),
-                 by = 'cluster') %>% 
-      arrange(-count) %>%
-      select(cluster, count, summary)
-  },
-  options = list(
-    paging = FALSE
-  ))
-   
   # render cluster word clouds in tab overview
   output$cluster_wc_tabs <- renderUI({
-    tabs <- df_wordcloud %>% 
-      pull(cluster) %>% unique %>% 
+    tabs <- tibble(cluster = clusters) %>% 
+      count(cluster, name = 'count') %>% 
+      filter(count >= 20) %>%
+      arrange(-count) %>%
+      pull(cluster) %>% 
+    # tabs <- df_wordcloud %>% 
+    #   pull(cluster) %>% unique %>% 
       map(function(cl) {
+        n_terms <- sum(clusters == cl)
         p_wordcloud <- df_wordcloud %>% 
           filter(cluster == cl) %>% 
-          slice_min(padj, n=15) %>%
+          slice_min(padj, n=20) %>%
           ggplot(aes(label = keyword, size = -log10(padj), color=keyword)) +
           geom_text_wordcloud() +
           scale_size_area(max_size = 30) +
+          labs(caption = str_glue('{n_terms} GO terms in cluster {cl}')) +
           theme_minimal() + NULL
-        tab_title = str_glue('Cluster_{cl}')
+        tab_title = str_glue('Cluster {cl}')
         tabPanel(tab_title, renderPlot({p_wordcloud}), value = cl)
       })
     do.call(tabBox, c(tabs, list(width = 12, title = 'Cluster Wordclouds', id='cluster_wc')))
@@ -702,7 +710,7 @@ server <- function(input, output, session) {
     updateRadioButtons(inputId = 'seltype', selected = default_seltype)
     updateSelectizeInput(inputId = 'id', selected = default_id)
     updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
-  }) 
+  })
   
   # TODO remove: moved to message notification
   # for modals, consider html = TRUE and maybe custom icons?
