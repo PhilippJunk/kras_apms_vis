@@ -15,10 +15,12 @@
 library(ComplexHeatmap)
 library(InteractiveComplexHeatmap)
 library(tidyverse)
+library(ggwordcloud)
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
 library(shinyalert)
+
 
 # helper function for heatmap generation
 source('functions.R')
@@ -29,7 +31,7 @@ load('data/data.Rdata')
 # action function for InteractiveComplexHeatmap: 
 # needs to be defined here
 click_action = function(df, output) {
-  output[["go_info"]] = renderUI({
+  output[["go_info_heatmap"]] = renderUI({
     if(!is.null(df)) {
       go_id1 = rownames(dist_mat)[df$row_index]
       go_id2 = colnames(dist_mat)[df$column_index]
@@ -48,7 +50,7 @@ click_action = function(df, output) {
 }
 
 brush_action = function(df, output) {
-  output[["go_info"]] = renderUI({
+  output[["go_info_heatmap"]] = renderUI({
     if(!is.null(df)) {
       row_index = unique(unlist(df$row_index))
       column_index = unique(unlist(df$column_index))
@@ -227,11 +229,18 @@ ui2 <- dashboardPage(
               fluidRow(box(subHeatmapOutput("ht", title = NULL),
                            width = 12, title = "Sub-heatmap")),
               shinyjs::hidden(fluidRow(title = 'OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
-              htmlOutput("go_info")),
+              fluidRow(box(htmlOutput("go_info_heatmap"),
+                           title = 'GO terms in selected area', width = 12, 
+                           collapsible = T))),
       tabItem(tabName = 'overview-clusters',
               h2('Overview GO Semantic Clusters'),
               hr(),
-              h2('TODO')),
+              fluidRow(box(dataTableOutput('table_clusters_overview'),
+                           title = 'Overview Clusters', width = 12)),
+              uiOutput('cluster_wc_tabs'),
+              fluidRow(box(htmlOutput('go_info_clusters'),
+                           title = 'GO terms in selected cluster', width = 12, 
+                           collapsible = T))),
       tabItem(tabName = 'specific-summary',
               h2('Summary Selected GO term'),
               fluidRow(box(htmlOutput('ontology_info'),
@@ -446,6 +455,51 @@ server <- function(input, output, session) {
 
   ##################################################################
   ## RENDERED ELEMENTS
+  
+  # render table of summarised GO semantic clusers
+  output$table_clusters_overview <- renderDataTable({
+    df_wordcloud %>% group_by(cluster) %>%
+      slice_min(padj, n=3) %>%
+      summarise(summary = str_c(keyword, collapse = '; ')) %>%
+      ungroup %>% 
+      inner_join(tibble(cluster = clusters) %>%
+                   count(cluster, name = 'count'),
+                 by = 'cluster') %>% 
+      arrange(-count) %>%
+      select(cluster, count, summary)
+  },
+  options = list(
+    paging = FALSE
+  ))
+   
+  # render cluster word clouds in tab overview
+  output$cluster_wc_tabs <- renderUI({
+    tabs <- df_wordcloud %>% 
+      pull(cluster) %>% unique %>% 
+      map(function(cl) {
+        p_wordcloud <- df_wordcloud %>% 
+          filter(cluster == cl) %>% 
+          slice_min(padj, n=15) %>%
+          ggplot(aes(label = keyword, size = -log10(padj), color=keyword)) +
+          geom_text_wordcloud() +
+          scale_size_area(max_size = 30) +
+          theme_minimal() + NULL
+        tab_title = str_glue('Cluster_{cl}')
+        tabPanel(tab_title, renderPlot({p_wordcloud}), value = cl)
+      })
+    do.call(tabBox, c(tabs, list(width = 12, title = 'Cluster Wordclouds', id='cluster_wc')))
+  })
+  
+  # render all go terms in currently selected cluster
+  output$go_info_clusters <- renderUI({
+    # get currently active tab and extract GO terms
+    go_id <- rownames(dist_mat)[clusters == as.numeric(input$cluster_wc)]
+    if(length(go_id > 0)) {
+      go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
+        str_c(collapse='\n')
+      HTML(str_glue("<pre>{go_text}</pre>"))
+    }
+  })
   
   # render information about ontology term currently displayed
   output$ontology_info <- renderUI({
