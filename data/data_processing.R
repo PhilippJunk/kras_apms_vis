@@ -1,7 +1,5 @@
 ## 
 ## Data Processing for KRAS APMS Shiny App
-## Written by Philipp Junk, 2022
-## Data by Camille Ternet
 ## 
 
 app_data_dir <- '/home/junkpp/work/other/2022-05-20_KRAS_APMS/kras_apms_vis/data/'
@@ -34,7 +32,8 @@ df_annotation <- read.csv(str_glue('{data_dir}/outputs_03/df_annotation.csv')) %
 # GO semantic analysis
 load(str_glue('{data_dir}/outputs_04/dist_mat.Rdata'))
 load(str_glue('{data_dir}/outputs_04/clusters.Rdata'))
-df_wordcloud <- read.csv(str_glue('{data_dir}/outputs_04/df_wordcloud.csv'))
+df_wordcloud <- read.csv(str_glue('{data_dir}/outputs_04/df_wordcloud.csv')) %>%
+  filter(padj < 0.05)
 
 ###############################################################################
 # save output
