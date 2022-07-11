@@ -88,20 +88,6 @@ brush_action = function(df, output) {
   })
 }
 
-# TODO remove
-# create heatmap for tests
-ht <- custom_ht_clusters(
-  dist_mat, 
-  clusters, 
-  df_gsea = df_gsea,
-  df_anova = df_anova,
-  ref_gsea_condition = 'unstim_none',
-  # ref_anova_condition = 'unstim',
-  # ref_gsea_mut_status = 'wt',
-  # ref_anova_mut_status = 'wt',
-  reduce_matrix = T)
-draw(ht)
-
 # color schemes from Camille's thesis:
 # TODO filter out what I don't need, maybe include more
 # TODO I need color codes for mutation status
@@ -279,12 +265,18 @@ ui <- dashboardPage(
               fluidRow(box(htmlOutput('ontology_info'),
                            title = 'Process Information', width = 12)),
               fluidRow(box(plotOutput('plot_proteins_overview'),
+                           downloadButton('dl_png_proteins_overview', label = 'Download PNG'),
+                           downloadButton('dl_csv_proteins_overview', label = 'Download CSV'),
                            title = 'Samples per protein', width = 12)),
               fluidRow(box(plotOutput('plot_goprocess_info'),
+                           downloadButton('dl_png_goprocess_info', label = 'Download PNG'),
+                           downloadButton('dl_csv_goprocess_info', label = 'Download CSV'),
                            title = 'Number of identified proteins', width = 12))),
       tabItem(tabName = 'specific-sum',
               h2('Summed LFQ intensities'),
               fluidRow(box(plotOutput('plot_lfqsum'),
+                           downloadButton('dl_png_lfqsum', label = 'Download PNG'),
+                           downloadButton('dl_csv_lfqsum', label = 'Download CSV'),
                            title = 'Summed LFQ intensities', width = 12)),
               fluidRow(box(
                 title = 'Differential Analysis: ANOVA', width = 12, collapsible = T,
@@ -297,14 +289,16 @@ ui <- dashboardPage(
                                                        label = 'Select terms to display in table',
                                                        choices = choices_anova_factors,
                                                        selected = default_anova_factors,
-                                                       multiple = TRUE))))),
+                                                       multiple = TRUE),
+                                           downloadButton('dl_csv_anova', label = 'Download CSV'))))),
               fluidRow(box(
                 title = 'Differential Analysis: GSEA', width = 12, collapsible = T,
                 sidebarLayout(mainPanel(dataTableOutput('table_gsea')),
                               sidebarPanel(sliderInput(inputId = 'gsea_pval',
                                                        label = 'Set cutoff for adjusted p-value',
                                                        min = 0.01, max = 0.1, 
-                                                       value = default_gsea_pval)))))),
+                                                       value = default_gsea_pval),
+                                           downloadButton('dl_csv_gsea', label = 'Download CSV')))))),
       tabItem(tabName = 'specfic-indiv',
               h2('Individual Proteins LFQ intensities'),
               fluidRow(box(
@@ -313,6 +307,8 @@ ui <- dashboardPage(
                                            label = 'Select proteins to plot',
                                            choices = character(),
                                            options = list(maxItems = 10)))),
+                downloadButton('dl_png_proteins', label = 'Download PNG'),
+                downloadButton('dl_csv_proteins', label = 'Download CSV'),
                 width = 12)))
     )
   )
@@ -321,7 +317,7 @@ ui <- dashboardPage(
 # Server logic
 server <- function(input, output, session) {
   ##################################################################
-  ## REACTIVE VALUES: data frames
+  ## REACTIVE VALUES: general data frames
   
   # reactive subset of df_apms 
   dfr_apms <- reactive({
@@ -370,7 +366,8 @@ server <- function(input, output, session) {
       arrange(factor(term, levels = input$anova_factors)) %>%
       group_by(term) %>%
       arrange(p_adj, .by_group = T) %>%
-      ungroup
+      ungroup %>%
+      select(term, group_higher, group_lower, estimate, p_adj)
   })
   
   # reactive subset of df_gsea
@@ -385,43 +382,23 @@ server <- function(input, output, session) {
       filter(p_adj <= input$gsea_pval) %>%
       group_by(enriched_in) %>%
       arrange(desc(NES), .by_group = T) %>%
-      ungroup
+      ungroup %>%
+      select(id, enriched_in, enriched_against, NES, p_adj)
   })
   
   ##################################################################
-  ## REACTIVE VALUES: plots
-  
-  # heatmap
-  ht <- reactive({
-    make_ht(dist_mat, clusters, df_gsea, df_anova, ht_settings())
-  })
-  
-  # construct plot for overview over individual proteins
-  reac_plot_proteins_overview <- reactive({
-    df <- dfr_apms() %>%
+  ## REACTIVE VALUES: data frames for plots
+  dfr_plot_proteins_overview <- reactive({
+    dfr_apms() %>%
       group_by(hgnc) %>%
       summarise(count = n()) %>%
       ungroup %>%
       arrange(desc(count)) %>%
       mutate(hgnc = factor(hgnc, levels = hgnc))
-    n_total <- df$hgnc %>% unique %>% length
-    df <- df %>% 
-      slice_max(count, n=50)
-    n_here <- df$hgnc %>% unique %>% length
-    
-    ggplot(df, aes(x = hgnc, y = count)) +
-      geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
-      scale_x_discrete(guide = guide_axis(angle = 45)) +
-      labs(x = 'HGNC', y = 'Number of samples',
-           caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
-      theme_minimal() +
-      NULL
   })
   
-  # construct plot for information on GO process
-  reac_plot_goprocess_info <- reactive({
-    # TODO include custom color set
-    df <- bind_rows(
+  dfr_plot_goprocess_info <- reactive({
+    bind_rows(
       tibble(
         group = 'Whole Set',
         condition = 'whole_set',
@@ -436,7 +413,47 @@ server <- function(input, output, session) {
         select(group, condition, count)
     ) %>%
       mutate(group = factor(group, levels = unique(group)))
-    df %>%
+  })
+  
+  dfr_plot_proteins <- reactive({
+    validate(need(input$indiv_proteins, 'Please select at least one protein to plot.'))
+    dfr_apms() %>%
+      filter(hgnc %in% input$indiv_proteins) %>%
+      mutate(hgnc = factor(hgnc, levels = input$indiv_proteins)) %>%
+      mutate(mut_status = str_to_upper(mut_status))
+  })
+  
+  
+  
+  ##################################################################
+  ## REACTIVE VALUES: plots
+  
+  # heatmap
+  ht <- reactive({
+    make_ht(dist_mat, clusters, df_gsea, df_anova, ht_settings())
+  })
+  
+  # construct plot for overview over individual proteins
+  reac_plot_proteins_overview <- reactive({
+    df <- dfr_plot_proteins_overview()
+    n_total <- df$hgnc %>% unique %>% length
+    df <- df %>% 
+      slice_max(count, n=50)
+    n_here <- min(50, n_total)
+    
+    ggplot(df, aes(x = hgnc, y = count)) +
+      geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
+      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      labs(x = 'HGNC', y = 'Number of samples',
+           caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
+      theme_minimal() +
+      NULL
+  })
+  
+  # construct plot for information on GO process
+  reac_plot_goprocess_info <- reactive({
+    # TODO include custom color set
+    dfr_plot_goprocess_info() %>%
       ggplot(aes(x = group, y = count, fill = condition)) +
       geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
       scale_fill_manual(values = c(condition_colors, 'white'), 
@@ -466,11 +483,7 @@ server <- function(input, output, session) {
   
   # construct plot for individual proteins
   reac_plot_proteins <- reactive({
-    validate(need(input$indiv_proteins, 'Please select at least one protein to plot.'))
-    plot <- dfr_apms() %>%
-      filter(hgnc %in% input$indiv_proteins) %>%
-      mutate(hgnc = factor(hgnc, levels = input$indiv_proteins)) %>%
-      mutate(mut_status = str_to_upper(mut_status)) %>%
+    plot <- dfr_plot_proteins() %>%
       ggplot(aes(x = str_glue('{condition}_{concentration}'), 
                  y = log2(LFQ), fill = condition)) +
       geom_boxplot(color = 'black', alpha=0.8) +
@@ -483,16 +496,13 @@ server <- function(input, output, session) {
       theme_bw() +
       NULL
     
-    # TODO also adjust based on number of mutations
     # adjust faceting depending on number of proteins to show
-    if (length(input$indiv_proteins) > 1) {
-      plot <- plot + 
-        facet_grid(rows=vars(hgnc), cols = vars(mut_status),
-                   scales = 'free')
-    } else {
-      plot <- plot + 
-        facet_grid(cols = vars(mut_status),
-                   scales = 'free')
+    if (length(input$indiv_proteins) > 1 & length(input$mut_status) > 1) {
+      plot <- plot + facet_grid(hgnc ~ mut_status, scales = 'free')
+    } else if (length(input$mut_status) > 1) {
+      plot <- plot + facet_grid(. ~ mut_status, scales = 'free')
+    } else if(length(input$indiv_proteins) > 1) {
+      plot <- plot + facet_grid(hgnc ~ .)
     }
     plot
   })
@@ -508,8 +518,6 @@ server <- function(input, output, session) {
       filter(count >= 20) %>%
       arrange(-count) %>%
       pull(cluster) %>% 
-    # tabs <- df_wordcloud %>% 
-    #   pull(cluster) %>% unique %>% 
       map(function(cl) {
         n_terms <- sum(clusters == cl)
         p_wordcloud <- df_wordcloud %>% 
@@ -521,7 +529,8 @@ server <- function(input, output, session) {
           labs(caption = str_glue('{n_terms} GO terms in cluster {cl}')) +
           theme_minimal() + NULL
         tab_title = str_glue('Cluster {cl}')
-        tabPanel(tab_title, renderPlot({p_wordcloud}), value = cl)
+        tabPanel(tab_title, value = cl, 
+                 renderPlot({p_wordcloud}))
       })
     do.call(tabBox, c(tabs, list(width = 12, title = 'Cluster Wordclouds', id='cluster_wc')))
   })
@@ -583,7 +592,6 @@ server <- function(input, output, session) {
   output$table_anova <- renderDataTable({
     # TODO potentially rename estimate into something more meaningful
     dfr_anova() %>%
-      select(term, group_higher, group_lower, estimate, p_adj) %>%
       mutate(estimate = round(estimate, 2)) %>%
       mutate(p_adj = scales::scientific(p_adj)) %>%
       rename('Adj. P-value' = p_adj)
@@ -598,12 +606,80 @@ server <- function(input, output, session) {
     dfr_gsea() %>%
       mutate(p_adj = scales::scientific(p_adj)) %>%
       mutate(NES = round(NES, 2)) %>%
-      select(id, enriched_in, enriched_against, NES, p_adj) %>%
       rename('Adj. P-value' = p_adj)
   },
   options = list(
     paging = FALSE
   ))
+  
+  ##################################################################
+  ## DOWNLOAD HANDLERS
+  
+  # for goprocess_info
+  output$dl_png_goprocess_info <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_proteinsPerCondition.png'),
+    content = function(con) {ggsave(con, reac_plot_goprocess_info(), device = 'png')},
+    contentType = 'image/png'
+  ) # TODO set width + height
+  
+  output$dl_csv_goprocess_info <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_proteinsPerCondition.csv'),
+    content = function(con) {write.csv(dfr_plot_goprocess_info(), con)},
+    contentType = 'text/csv'
+  )
+  
+  # for lfqsum
+  output$dl_png_lfqsum <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_sumLFQ.png'),
+    content = function(con) {ggsave(con, reac_plot_lfqsum(), device = 'png')},
+    contentType = 'image/png'
+  ) # TODO set width + height
+  
+  output$dl_csv_lfqsum <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_sumLFQ.csv'),
+    content = function(con) {write.csv(dfr_sum(), con)},
+    contentType = 'text/csv'
+  )
+  
+  # for proteins_overview
+  output$dl_png_proteins_overview <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_conditionsPerProtein.png'),
+    content = function(con) {ggsave(con, reac_plot_proteins_overview(), device = 'png')},
+    contentType = 'image/png'
+  ) # TODO set width + height
+  
+  output$dl_csv_proteins_overview <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_conditionsPerProtein.csv'),
+    content = function(con) {write.csv(dfr_plot_proteins_overview(), con)},
+    contentType = 'text/csv'
+  )
+  
+  # for proteins
+  output$dl_png_proteins <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_indivProteins.png'),
+    content = function(con) {ggsave(con, reac_plot_proteins(), device = 'png')},
+    contentType = 'image/png'
+  ) # TODO set width + height
+  
+  output$dl_csv_proteins <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_indivProteins.csv'),
+    content = function(con) {write.csv(dfr_plot_proteins(), con)},
+    contentType = 'text/csv'
+  )
+  
+  # for anova
+  output$dl_csv_anova <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_anova.csv'),
+    content = function(con) {write.csv(dfr_anova(), con)},
+    contentType = 'text/csv'
+  )
+  
+  # for gsea
+  output$dl_csv_gsea <- downloadHandler(
+    filename = str_glue('{str_replace(input$id, ":", "")}_gsea.csv'),
+    content = function(con) {write.csv(dfr_gsea(), con)},
+    contentType = 'text/csv'
+  )
   
   ##################################################################
   ## OBSERVERS
