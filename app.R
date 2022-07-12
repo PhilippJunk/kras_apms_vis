@@ -1,19 +1,10 @@
 ##
 ## Interactive Visualization KRAS APMS
-## Based on data by Camille Ternet
-## Developed by Philipp Junk, 2022
 ##
 
 # TODO next steps
-# - recreate data selection panel (and this time make it behave properly)
-# - create interactive interface for heatmap
-# - try caching heatmap to potentially improve performance
-# - redesign ui with shinydashboard
-# - write export of plots/tables
 # - write help (either popup, or maybe a couple readthedocs pages?)
 
-library(ComplexHeatmap)
-library(InteractiveComplexHeatmap)
 library(tidyverse)
 library(ggwordcloud)
 library(shiny)
@@ -21,74 +12,11 @@ library(shinydashboard)
 library(shinyjs)
 library(shinyalert)
 
-library(BiocManager)
-options(repos = BiocManager::repositories())
-
 # helper function for heatmap generation
 source('functions.R')
 
 # load data
 load('data/data.Rdata')
-
-# action function for InteractiveComplexHeatmap: 
-# needs to be defined here
-click_action = function(df, output) {
-  output[["go_info_heatmap"]] = renderUI({
-    if(!is.null(df)) {
-      df <- as_tibble(df)
-      
-      # distinguish between click on simiarlity heatmap and click on data heatmaps
-      if (df$heatmap == 'Similarity') {
-        go_id1 = df$row_label
-        go_id2 = df$column_label
-        
-        HTML(str_glue(
-          "<pre>
-## Row GO ID
-<a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1, df_annotation)} <button id='{go_id1}' class='go_sel_button'>Select</button>
-
-## Column GO ID:
-<a href='http://amigo.geneontology.org/amigo/term/{go_id2}' target='_blank'>{go_id2}</a>: {get_go_term(go_id2, df_annotation)} <button id='{go_id2}' class='go_sel_button'>Select</button>
-</pre>"
-        ))
-      } else {
-        go_id1 = df$row_label
-
-        HTML(str_glue(
-          "<pre>
-## Row GO ID
-<a href='http://amigo.geneontology.org/amigo/term/{go_id1}' target='_blank'>{go_id1}</a>: {get_go_term(go_id1, df_annotation)} <button id='{go_id1}' class='go_sel_button'>Select</button>
-</pre>"
-        ))
-      }
-      
-
-    }
-  })
-}
-
-brush_action = function(df, output) {
-  output[["go_info_heatmap"]] = renderUI({
-    if(!is.null(df)) {
-      df <- as_tibble(df)
-      # extract GO IDs from brushed area
-      go_id <- c(df %>% filter(heatmap == 'Similarity') %>%
-                   select(row_label, column_label) %>% 
-                   as.list %>% 
-                   flatten %>% 
-                   flatten_chr,
-                 df %>% filter(heatmap != 'Similarity') %>%
-                   select(row_label) %>% 
-                   as.list %>%
-                   flatten %>% 
-                   flatten_chr)
-
-      go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
-        str_c(collapse='\n')
-      HTML(str_glue("<pre>{go_text}</pre>"))
-    }
-  })
-}
 
 # color schemes from Camille's thesis:
 # TODO filter out what I don't need, maybe include more
@@ -210,52 +138,10 @@ ui <- dashboardPage(
     tabItems(
       tabItem(tabName = 'overview-heatmap',
               h2('Overview Semantic Distance Heatmap'),
-              fluidRow(box(width = 12, title = 'Heatmap Controls',
-                           collapsible = TRUE, collapsed = TRUE,
-                           selectizeInput(inputId = 'ht_ref_anova_mut',
-                                          label = 'Reference group: ANOVA mutation status',
-                                          choices = choices_mut_status, selected = NULL,
-                                          options = list(maxItems = 1, 
-                                                         onInitialize = I('function() { this.setValue(""); }'))),
-                           selectizeInput(inputId = 'ht_ref_anova_cond',
-                                          label = 'Reference group: ANOVA condition',
-                                          choices = choices_condition, selected = NULL,
-                                          options = list(maxItems = 1, 
-                                                         onInitialize = I('function() { this.setValue(""); }'))),
-                           selectizeInput(inputId = 'ht_ref_gsea_mut',
-                                          label = 'Reference group: GSEA mutation status',
-                                          choices = choices_mut_status, selected = NULL,
-                                          options = list(maxItems = 1, 
-                                                         onInitialize = I('function() { this.setValue(""); }'))),
-                           selectizeInput(inputId = 'ht_ref_gsea_cond',
-                                          label = 'Reference group: GSEA condition/concentration',
-                                          choices = choices_cond_conc, 
-                                          selected = 'unstim_none', 
-                                          options = list(maxItems = 1)),
-                           hr(),
-                           radioButtons(inputId = 'ht_reduce', 
-                                        label = 'Only show GO terms that are signficantly different in the data shown in the heatmap?',
-                                        choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
-                                        selected = TRUE, inline = TRUE),
-                           radioButtons(inputId = 'ht_clusters', label = 'Show all clusters?',
-                                        choiceValues = c(TRUE, FALSE), choiceNames = c('Yes', 'No'), 
-                                        selected = TRUE, inline = TRUE),
-                           conditionalPanel(condition = 'input.ht_clusters == "FALSE"',
-                                            selectInput(inputId = 'ht_cluster_sel',
-                                                        label = 'Select clusters to show',
-                                                        choices = choices_clusters,
-                                                        selected = 1, multiple = T)),
-                           fluidRow(column(2 ,actionButton(inputId = 'ht_apply', label = 'Render heatmap')),
-                                    column(10, hidden(span(style = 'color:red', id = 'error_ht',
-                                                           'Rendering the heatmap with the current settings not possible. Please choose other settings.')))))),
-              fluidRow(box(originalHeatmapOutput("ht", title = NULL, width = '1000px'),
-                           id = 'orig_ht', width = 12, title = "Full heatmap")),
-              fluidRow(box(subHeatmapOutput("ht", title = NULL),
-                           id = 'sub_ht', width = 12, title = "Sub-heatmap")),
-              shinyjs::hidden(fluidRow(title = 'OutputPanel', HeatmapInfoOutput('ht', title=NULL))),
-              fluidRow(box(htmlOutput("go_info_heatmap"),
-                           title = 'GO terms in selected area', width = 12, 
-                           collapsible = T))),
+              fluidRow(box(includeHTML('www/static_heatmap.html'),
+                           title = 'Overview heatmap', width = 12)),
+              fluidRow(box(includeHTML('www/static_heatmap_info.html'),
+                           title = 'Info interactive heatmap', width = 12))),
       tabItem(tabName = 'overview-clusters',
               h2('Overview GO Semantic Clusters'),
               uiOutput('cluster_wc_tabs'),
@@ -429,11 +315,6 @@ server <- function(input, output, session) {
   
   ##################################################################
   ## REACTIVE VALUES: plots
-  
-  # heatmap
-  ht <- reactive({
-    make_ht(dist_mat, clusters, df_gsea, df_anova, ht_settings())
-  })
   
   # construct plot for overview over individual proteins
   reac_plot_proteins_overview <- reactive({
@@ -685,40 +566,6 @@ server <- function(input, output, session) {
   
   ##################################################################
   ## OBSERVERS
-  
-  # add trigger to extract settings for plotting the heatmap
-  # tied to ht_apply action button
-  ht_settings <- bindEvent({
-    reactive({
-      list(ref_anova_mut = if(input$ht_ref_anova_mut != '') {input$ht_ref_anova_mut} else {NULL},
-           ref_anova_cond = if(input$ht_ref_anova_cond != '') {input$ht_ref_anova_cond} else {NULL},
-           ref_gsea_mut = if(input$ht_ref_gsea_mut != '') {input$ht_ref_gsea_mut} else {NULL},
-           ref_gsea_cond = if(input$ht_ref_gsea_cond != '') {input$ht_ref_gsea_cond} else {NULL},
-           reduce = as.logical(input$ht_reduce),
-           all_clusters = as.logical(input$ht_clusters),
-           selected_clusters = as.numeric(input$ht_cluster_sel))
-    })
-  },
-  input$ht_apply,
-  ignoreNULL = FALSE)
-  
-  # heatmap
-  observe({
-    if (!is.null(ht())) {
-      shinyjs::show('orig_ht')
-      shinyjs::show('sub_ht')
-      shinyjs::hide('error_ht')
-      
-      makeInteractiveComplexHeatmap(
-        input, output, session, ht(), "ht",
-        click_action = click_action, brush_action = brush_action)
-    }
-    else {
-      shinyjs::hide('orig_ht')
-      shinyjs::hide('sub_ht')
-      shinyjs::show('error_ht')
-    }
-  })
   
   # add observers to selection of processes
   # update based on process selection
