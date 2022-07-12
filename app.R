@@ -141,10 +141,9 @@ default_gsea_pval <- 0.05
 ui <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization',
-    dropdownMenu(type = 'notifications', headerText = 'See also', 
+    dropdownMenu(type = 'notifications', headerText = 'Further links', 
                  icon = icon('info'), badgeStatus = NULL, # TODO add link to article
                  notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'), #TODO link
-                 notificationItem(text = 'Help', icon = icon('question'), href = NULL), # TODO link
                  notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL),
                  notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))), # TODO link
   dashboardSidebar(
@@ -172,6 +171,12 @@ ui <- dashboardPage(
                            tabName = 'specfic-indiv',
                            icon = NULL)
                ),
+      menuItem(text = 'Settings',
+               tabName = 'settings',
+               icon = icon('gear', verify_fa = FALSE)),
+      menuItem(text = 'Help',
+               tabName = 'help',
+               icon = icon('question')),
       hr(),
       h4('Ontology Control Panel', style = 'text-align:center'),
       # Radio buttons on how to select GO terms
@@ -307,7 +312,11 @@ ui <- dashboardPage(
                                            options = list(maxItems = 10)))),
                 downloadButton('dl_png_proteins', label = 'Download PNG'),
                 downloadButton('dl_csv_proteins', label = 'Download CSV'),
-                width = 12)))
+                width = 12))),
+      tabItem(tabName = 'settings',
+              h2('Settings')),
+      tabItem(tabName = 'help',
+              h2('Help'))
     )
   )
 )
