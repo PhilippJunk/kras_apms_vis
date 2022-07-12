@@ -21,6 +21,8 @@ library(shinydashboard)
 library(shinyjs)
 library(shinyalert)
 
+library(BiocManager)
+options(repos = BiocManager::repositories())
 
 # helper function for heatmap generation
 source('functions.R')
