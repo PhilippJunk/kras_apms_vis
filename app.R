@@ -1,15 +1,9 @@
 ##
 ## Interactive Visualization KRAS APMS
-## Based on data by Camille Ternet
-## Developed by Philipp Junk, 2022
 ##
 
 # TODO next steps
-# - recreate data selection panel (and this time make it behave properly)
-# - create interactive interface for heatmap
 # - try caching heatmap to potentially improve performance
-# - redesign ui with shinydashboard
-# - write export of plots/tables
 # - write help (either popup, or maybe a couple readthedocs pages?)
 
 library(ComplexHeatmap)
@@ -19,10 +13,10 @@ library(ggwordcloud)
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
-library(shinyalert)
 
-library(BiocManager)
-options(repos = BiocManager::repositories())
+# necessary for upload to shinyapps.io
+# library(BiocManager)
+# options(repos = BiocManager::repositories())
 
 # helper function for heatmap generation
 source('functions.R')
@@ -37,7 +31,7 @@ click_action = function(df, output) {
     if(!is.null(df)) {
       df <- as_tibble(df)
       
-      # distinguish between click on simiarlity heatmap and click on data heatmaps
+      # distinguish between click on similarity heatmap and click on data heatmaps
       if (df$heatmap == 'Similarity') {
         go_id1 = df$row_label
         go_id2 = df$column_label
@@ -90,9 +84,7 @@ brush_action = function(df, output) {
   })
 }
 
-# color schemes from Camille's thesis:
-# TODO filter out what I don't need, maybe include more
-# TODO I need color codes for mutation status
+# color schemes 
 conditions <- c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa')
 conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
 condition_colors <- c("#001524","#12616D","#75964A",
@@ -140,7 +132,6 @@ default_seltype <- 'process'
 default_id <- 'GO:0061621'
 default_mut_status <- choices_mut_status
 default_cond_conc <- choices_cond_conc
-default_panel <- 'sum_lfq'
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
 default_anova_pval <- 0.05
 default_gsea_pval <- 0.05
@@ -152,9 +143,10 @@ ui <- dashboardPage(
     title = 'KRAS APMS Visualization',
     dropdownMenu(type = 'notifications', headerText = 'See also', 
                  icon = icon('info'), badgeStatus = NULL, # TODO add link to article
-                 notificationItem(text = 'Source code', icon = icon('github'), href = NULL), #TODO link
+                 notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'), #TODO link
                  notificationItem(text = 'Help', icon = icon('question'), href = NULL), # TODO link
-                 notificationItem(text = 'Contact', icon = icon('envelope'), href = NULL))), # TODO link
+                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL),
+                 notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))), # TODO link
   dashboardSidebar(
     sidebarMenu(
       menuItem(text = 'Overview',
@@ -191,6 +183,10 @@ ui <- dashboardPage(
       selectInput(inputId = 'id', label = 'ID/Process', 
                   choices = c(default_id), selected = default_id,
                   multiple = FALSE),
+      # History of selected GO terms
+      actionButton('id_history', 'View History', icon = icon('history')),
+      # Random selection of GO term
+      actionButton('id_random', 'Random GO term', icon = icon('dice')),
       hr(),
       h4('Data Control Panel', style = 'text-align:center'),
       # Input for selection of mutation status
@@ -359,7 +355,7 @@ server <- function(input, output, session) {
     # - selected GO process
     # - selected p_value
     # - selected interactions
-    # TODO finish filtering by data input panel
+    # TODO filtering by data input panel
     validate(need(input$id, 'Please select an ontology term.'))
     df_anova %>%
       filter(id == input$id) %>%
@@ -377,7 +373,7 @@ server <- function(input, output, session) {
     # return data frame derived from df_gsea filtered by
     # - selected GO process
     # - selected p_value
-    # TODO finish filtering by data input panel
+    # TODO filtering by data input panel
     validate(need(input$id, 'Please select an ontology term.'))
     df_gsea %>%
       filter(id == input$id) %>%
@@ -390,6 +386,7 @@ server <- function(input, output, session) {
   
   ##################################################################
   ## REACTIVE VALUES: data frames for plots
+  
   dfr_plot_proteins_overview <- reactive({
     dfr_apms() %>%
       group_by(hgnc) %>%
@@ -478,6 +475,9 @@ server <- function(input, output, session) {
       geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
       facet_grid(cols = vars(condition, concentration)) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
+      scale_fill_manual(values = mut_status_colors,
+                        breaks = mut_status, 
+                        labels = mut_status_hq) + 
       labs(x = 'Mutation Status', y = 'log2(Sum(LFQ))', fill = 'Mutation Status') +
       theme_bw(base_size = 15) +
       NULL
@@ -509,7 +509,10 @@ server <- function(input, output, session) {
     plot
   })
   
-
+  ##################################################################
+  ## REACTIVE VALUE: history of selected ids
+  id_history <- reactiveVal(value = NULL)
+  
   ##################################################################
   ## RENDERED ELEMENTS
   
@@ -551,8 +554,7 @@ server <- function(input, output, session) {
   # render information about ontology term currently displayed
   output$ontology_info <- renderUI({
     # TODO potentially extract the two closest ontologies from dist_mat and 
-    # display then as selectable options here as well?
-    
+    # display then as select-able options here as well?
     annotation <- df_annotation %>%
       filter(id == input$id) %>% head(1)
     n_all <- df_annotation %>% 
@@ -702,7 +704,7 @@ server <- function(input, output, session) {
   input$ht_apply,
   ignoreNULL = FALSE)
   
-  # heatmap
+  # catch settings where heatmap returns empty and then does not update
   observe({
     if (!is.null(ht())) {
       shinyjs::show('orig_ht')
@@ -719,6 +721,14 @@ server <- function(input, output, session) {
       shinyjs::show('error_ht')
     }
   })
+  
+  # observer for updating history of selected ids
+  bindEvent({
+    observe({
+      id_history(c(input$id, id_history()))
+    })
+  },
+  input$id)
   
   # add observers to selection of processes
   # update based on process selection
@@ -765,6 +775,35 @@ server <- function(input, output, session) {
     )
   })
   
+  # add trigger to id history
+  bindEvent({
+    observe({
+      showModal(modalDialog(
+        p('Showing the last 20 selected GO IDs.'),
+        {
+          go_id <- id_history() %>% head(20)
+          if(length(go_id > 0)) {
+            go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
+              str_c(collapse='\n')
+            HTML(str_glue("<pre>{go_text}</pre>"))
+          }},
+        title = 'GO ID selection history',
+        easyClose = TRUE,
+        fade = TRUE,
+        size = 'l'))
+    })
+  },
+  input$id_history)
+  
+
+  # add trigger to random id selection 
+  bindEvent({
+    observe({
+      updateSelectInput(inputId = 'id', selected = sample(rownames(dist_mat), 1))
+    })
+  },
+  input$id_random)
+  
   # add observation to selection of individual proteins to plot
   # Updated based on which GO process is selected
   observe({
@@ -782,31 +821,12 @@ server <- function(input, output, session) {
   })
   
   # add triggers to bottom row of action buttons/links
-  # TODO reset and savePlot
+  # TODO reset app
   observeEvent(input$button_reset, {
     # reset everything back to defaults
     updateRadioButtons(inputId = 'seltype', selected = default_seltype)
     updateSelectizeInput(inputId = 'id', selected = default_id)
     updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
-  })
-  
-  # TODO remove: moved to message notification
-  # for modals, consider html = TRUE and maybe custom icons?
-  observeEvent(input$button_help, {
-    shinyalert(
-      title = 'Help Page',
-      text = 'TODO',
-      type = 'info'
-    )
-  })
-  
-  # TODO remove: moved to message notification
-  observeEvent(input$button_impressum, {
-    shinyalert(
-      title = 'Impressum',
-      text = 'TODO',
-      type = 'info'
-    )
   })
 }
 
