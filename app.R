@@ -129,7 +129,7 @@ choices_anova_factors <- df_anova %>%
 
 # set default settings for initializing
 default_seltype <- 'process'
-default_id <- 'GO:0061621'
+default_id <- 'GO:1903578'
 default_mut_status <- choices_mut_status
 default_cond_conc <- choices_cond_conc
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
@@ -181,7 +181,7 @@ ui <- dashboardPage(
                    selected = default_seltype, inline = TRUE),
       # Input for selection of GO terms
       selectInput(inputId = 'id', label = 'ID/Process', 
-                  choices = c(default_id), selected = default_id,
+                  choices = default_id, selected = default_id,
                   multiple = FALSE),
       # History of selected GO terms
       actionButton('id_history', 'View History', icon = icon('history')),
@@ -510,8 +510,21 @@ server <- function(input, output, session) {
   })
   
   ##################################################################
-  ## REACTIVE VALUE: history of selected ids
+  ## REACTIVE VALUES: others
+  
+  # history of selected ids
   id_history <- reactiveVal(value = NULL)
+  
+  # choices for id selection
+  choices_id <- reactive({
+    validate(need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
+    df_sum %>%
+      filter(mut_status %in% input$mut_status) %>%
+      filter(str_glue('{condition}_{concentration}') %in% input$cond_conc) %>%
+      pull(id) %>% 
+      unique
+  })
   
   ##################################################################
   ## RENDERED ELEMENTS
@@ -557,19 +570,14 @@ server <- function(input, output, session) {
     # display then as select-able options here as well?
     annotation <- df_annotation %>%
       filter(id == input$id) %>% head(1)
-    n_all <- df_annotation %>% 
-      filter(id == input$id) %>%
-      pull(n_all) %>% head(1)
-    n_found <- df_annotation %>% 
-      filter(id == input$id) %>%
-      pull(n_found) %>% head(1)
-    HTML(str_c(str_c('<strong>', annotation$id, '</strong>'),
-               str_c('<strong>', annotation$process, '</strong>'),
-               annotation$definition,
-               '<hr>',
-               str_c('Size whole set: ', n_all),
-               str_c('Number found in APMS: ', n_found),
-               sep = '<br/>'))
+    HTML(strong(annotation$id) %>% as.character,
+         br() %>% as.character,
+         strong(annotation$process) %>% as.character,
+         br() %>% as.character(),
+         p(annotation$definition) %>% as.character,
+         hr() %>% as.character,
+         p('Size whole set: ', annotation$n_all) %>% as.character,
+         p('Number found in APMS: ', annotation$n_found) %>% as.character)
   })
   
   # render plot for information on GO process
@@ -731,49 +739,35 @@ server <- function(input, output, session) {
   input$id)
   
   # add observers to selection of processes
-  # update based on process selection
-  # TODO I can probably remove this whole selection? 
-  # OR I can adapt it on the cluster specific selection??
-  observe({
-    df_temp <- df_annotation %>%
-      select(id, process) %>%
-      filter(id %in% unique(df_sum$id)) %>%
-      distinct
-    
-    choice_values <- df_temp %>% pull(id)
-    if (input$seltype == 'process') {
-      choice_names <- str_c(choice_values, 
-                            df_temp %>% pull(process),
-                            sep=' ')
-    } else {
-      choice_names <- df_temp %>% pull(id)
-    }
-    names(choice_values) <- choice_names
-     
-    # keep selection if possible
-    # get currently selected
-    selected_curr <- input$id
-    if (selected_curr %in% df_temp$id) {
-      # retain selection
-      selected <- df_temp %>%
-        filter(id == selected_curr) %>%
-        pull(id)
-    } else if (selected_curr %in% df_temp$process) {  # TODO is this necessary?
-      # retain selection
-      selected <- df_temp %>% 
-        filter(process == selected_curr) %>%
-        pull(id)
-    } else {
-      # random selection
-      selected <- choice_values[1]
-    }
+  bindEvent({
+    observe({
+      choices <- choices_id()
+      current <- input$id
+      
+      # add names depending on which seltype has been selected
+      if (input$seltype == 'process') {
+        choices_names <- left_join(
+          tibble(id = choices),
+          df_annotation, 
+          by = 'id') %>% 
+          mutate(name = str_glue('{id} {process}')) %>%
+          pull(name)
+        names(choices) <- choices_names
+      }
 
-    updateSelectInput(
-      inputId = 'id',
-      choices = choice_values,
-      selected = selected,
-    )
-  })
+      # check if current selection still in choices
+      if (current %in% choices) {
+        selected <- current
+      } else {
+        selected <- choices[1]
+      }
+
+      updateSelectInput(inputId = 'id', choices = choices, selected = selected)
+    })},
+    input$seltype,
+    choices_id(),
+    ignoreNULL = FALSE
+  )
   
   # add trigger to id history
   bindEvent({
@@ -799,12 +793,12 @@ server <- function(input, output, session) {
   # add trigger to random id selection 
   bindEvent({
     observe({
-      updateSelectInput(inputId = 'id', selected = sample(rownames(dist_mat), 1))
+      updateSelectInput(inputId = 'id', selected = sample(choices_id(), 1))
     })
   },
   input$id_random)
   
-  # add observation to selection of individual proteins to plot
+  # add observation to selection of individual proteins to visualize
   # Updated based on which GO process is selected
   observe({
     df_proteins <- dfr_apms() %>%
@@ -819,17 +813,7 @@ server <- function(input, output, session) {
        server = TRUE
      )
   })
-  
-  # add triggers to bottom row of action buttons/links
-  # TODO reset app
-  observeEvent(input$button_reset, {
-    # reset everything back to defaults
-    updateRadioButtons(inputId = 'seltype', selected = default_seltype)
-    updateSelectizeInput(inputId = 'id', selected = default_id)
-    updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
-  })
 }
-
 
 # Run the application 
 shinyApp(ui = ui, server = server)
