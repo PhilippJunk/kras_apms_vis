@@ -2,11 +2,13 @@
 
 ## Access app on [shinyapps.io](https://shinyapps.io/)
 
+TODO make a version with less functionality available.
+
 ## Run app
 
-Due to the unfortunate circumstance that the interactive heatmap requires some computational resources to render, deployment on `shinyapps.io` sadly is not an option. However, running the app locally is straightforward. 
+Due to the unfortunate circumstance that the interactive heatmap requires some computational resources to render, deployment on `shinyapps.io` while retaining the full functionality sadly is not an option. However, running the app locally is straightforward. 
 
-First, you need to install `R version >= 4.2`. R can be installed from this [web site]().
+First, you need to install `R version >= 4.2`. R can be installed from this [web site](https://www.r-project.org/).
 
 
 Then, in R, you need to install the following dependencies:
@@ -41,6 +43,5 @@ c('ComplexHeatmap', 'InteractiveComplexHeatmap') %>%
 Afterwards, the app can easily be run from your local R session:
 
 ```R
-shiny::runGithub
-
+shiny::runGithub('philippjunk/kras_apms_vis')
 ```
