@@ -87,12 +87,11 @@ brush_action = function(df, output) {
 # color schemes 
 conditions <- c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa')
 conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
-condition_colors <- c("#001524","#12616D","#75964A",
-                      "#A1869E","#FF7D00","#78290F")
+conditions_colors <- c("#001524","#12616D","#75964A","#A1869E","#FF7D00","#78290F")
 
-mut_status <- c('wt', 'g12c', 'g12d', 'g12v')
-mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
-mut_status_colors <- c('#A98743', '#437C90', '#255957', '#8F2844')
+mut_stats <- c('wt', 'g12c', 'g12d', 'g12v')
+mut_stats_hq <- c('WT', 'G12C', 'G12D', 'G12V')
+mut_stats_colors <- c('#A98743', '#437C90', '#255957', '#8F2844')
 
 # get choices for inputs
 choices_clusters <- tibble(cluster = clusters) %>%
@@ -314,7 +313,22 @@ ui <- dashboardPage(
                 downloadButton('dl_csv_proteins', label = 'Download CSV'),
                 width = 12))),
       tabItem(tabName = 'settings',
-              h2('Settings')),
+              h2('Settings'),
+              fluidRow(column(width = 6,
+                              box(numericInput('settings_plot_height', 'Set height of plot downloads (in mm)', 
+                                               value = 150, max = 300),
+                                  numericInput('settings_plot_width', 'Set width of plot downloads (in mm)', 
+                                               value = 500, max = 1000),
+                                  numericInput('settings_plot_dpi', 'Set resolution of plot downloads (DPI)', 
+                                               value = 100, max = 300),
+                                  width = NULL, title = 'Download settings')),
+                       column(width = 6,
+                              box(numericInput('settings_n_history', 'Set number of elements shown',
+                                               value = 20, min=1),
+                                  width = NULL, title = 'History Settings'),
+                              box(numericInput('settings_n_proteins', 'Set number of proteins shown',
+                                               value = 50, min=1),
+                                  width = NULL, title = 'Settings "Samples per Proteins"')))),
       tabItem(tabName = 'help',
               h2('Help'))
     )
@@ -443,11 +457,12 @@ server <- function(input, output, session) {
   
   # construct plot for overview over individual proteins
   reac_plot_proteins_overview <- reactive({
+    validate(need(input$settings_n_proteins, 'Please provide the number of proteins to show in Settings.'))
     df <- dfr_plot_proteins_overview()
     n_total <- df$hgnc %>% unique %>% length
     df <- df %>% 
-      slice_max(count, n=50)
-    n_here <- min(50, n_total)
+      slice_max(count, n=settings_n_proteins())
+    n_here <- min(settings_n_proteins(), n_total)
     
     ggplot(df, aes(x = hgnc, y = count)) +
       geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
@@ -455,6 +470,7 @@ server <- function(input, output, session) {
       labs(x = 'HGNC', y = 'Number of samples',
            caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
       theme_minimal() +
+      theme(plot.background = element_rect(fill = 'white', color = 'white')) +
       NULL
   })
   
@@ -464,29 +480,32 @@ server <- function(input, output, session) {
     dfr_plot_goprocess_info() %>%
       ggplot(aes(x = group, y = count, fill = condition)) +
       geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
-      scale_fill_manual(values = c(condition_colors, 'white'), 
+      scale_fill_manual(values = c(conditions_colors, 'white'), 
                         breaks = c(conditions, 'whole_set'), 
                         labels = c(conditions_hq, 'Whole Set')) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
       labs(x = 'Group', y = 'Number of proteins', full = 'Condition') +
       theme_minimal() +
+      theme(plot.background = element_rect(fill = 'white', color = 'white')) +
       NULL
   })
   
   # construct plot of sum of LFQ intensities 
   reac_plot_lfqsum <- reactive({
     dfr_sum() %>%
-      mutate(mut_status = str_to_upper(mut_status)) %>%
+      # mutate(mut_status = str_to_upper(mut_status)) %>%
       mutate(condition = case_when(condition == 'unstim' ~ condition,
                                    T ~ str_to_upper(condition))) %>%
       ggplot(aes(x = mut_status, y = sum_LFQ, fill=mut_status)) +
       geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
       facet_grid(cols = vars(condition, concentration)) +
-      scale_x_discrete(guide = guide_axis(angle = 45)) +
-      scale_fill_manual(values = mut_status_colors,
-                        breaks = mut_status, 
-                        labels = mut_status_hq) + 
+      scale_x_discrete(guide = guide_axis(angle = 45),
+                       breaks = mut_stats,
+                       labels = mut_stats_hq) +
+      scale_fill_manual(values = mut_stats_colors,
+                        breaks = mut_stats, 
+                        labels = mut_stats_hq) + 
       labs(x = 'Mutation Status', y = 'log2(Sum(LFQ))', fill = 'Mutation Status') +
       theme_bw(base_size = 15) +
       NULL
@@ -500,7 +519,7 @@ server <- function(input, output, session) {
       geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(position = position_jitter(height=0, width=0.2)) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
-      scale_fill_manual(values = condition_colors, 
+      scale_fill_manual(values = conditions_colors, 
                         breaks = conditions, 
                         labels = conditions_hq) +
       labs(x = 'Condition/Concentration', y = 'log2(LFQ)', fill = 'Condition') +
@@ -533,6 +552,32 @@ server <- function(input, output, session) {
       filter(str_glue('{condition}_{concentration}') %in% input$cond_conc) %>%
       pull(id) %>% 
       unique
+  })
+  
+  # manually validate settings because numericInput does not
+  settings_plot_height <- reactive({
+    max_value <- 300
+    min(max_value, input$settings_plot_height)
+  })
+  
+  settings_plot_width <- reactive({
+    max_value <- 1000
+    min(max_value, input$settings_plot_width)
+  })
+  
+  settings_plot_dpi <- reactive({
+    max_value <- 300
+    min(max_value, input$settings_plot_dpi)
+  })
+  
+  settings_n_history <- reactive({
+    min_value <- 1
+    max(min_value, input$settings_n_history)
+  })
+  
+  settings_n_proteins <- reactive({
+    min_value <- 1
+    max(min_value, input$settings_n_proteins)
   })
   
   ##################################################################
@@ -575,8 +620,9 @@ server <- function(input, output, session) {
   
   # render information about ontology term currently displayed
   output$ontology_info <- renderUI({
-    # TODO potentially extract the two closest ontologies from dist_mat and 
+    # TODO potentially extract some closest ontologies from dist_mat and 
     # display then as select-able options here as well?
+    # tibble(dist = dist_mat[rownames(dist_mat) == input$id,], id = colnames(dist_mat)) %>% arrange(-dist) %>% filter(id != input$id) %>% head(5) %>% inner_join(df_annotation, by='id') %>% select(id, process)
     annotation <- df_annotation %>%
       filter(id == input$id) %>% head(1)
     HTML(strong(annotation$id) %>% as.character,
@@ -639,9 +685,13 @@ server <- function(input, output, session) {
   # for goprocess_info
   output$dl_png_goprocess_info <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_proteinsPerCondition.png'),
-    content = function(con) {ggsave(con, reac_plot_goprocess_info(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_goprocess_info(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_goprocess_info <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_proteinsPerCondition.csv'),
@@ -652,9 +702,13 @@ server <- function(input, output, session) {
   # for lfqsum
   output$dl_png_lfqsum <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_sumLFQ.png'),
-    content = function(con) {ggsave(con, reac_plot_lfqsum(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_lfqsum(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_lfqsum <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_sumLFQ.csv'),
@@ -665,9 +719,13 @@ server <- function(input, output, session) {
   # for proteins_overview
   output$dl_png_proteins_overview <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_conditionsPerProtein.png'),
-    content = function(con) {ggsave(con, reac_plot_proteins_overview(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_proteins_overview(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_proteins_overview <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_conditionsPerProtein.csv'),
@@ -678,9 +736,13 @@ server <- function(input, output, session) {
   # for proteins
   output$dl_png_proteins <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_indivProteins.png'),
-    content = function(con) {ggsave(con, reac_plot_proteins(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_proteins(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_proteins <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_indivProteins.csv'),
@@ -782,9 +844,9 @@ server <- function(input, output, session) {
   bindEvent({
     observe({
       showModal(modalDialog(
-        p('Showing the last 20 selected GO IDs.'),
+        p(str_glue('Showing the last {settings_n_history()} selected GO IDs.')),
         {
-          go_id <- id_history() %>% head(20)
+          go_id <- id_history() %>% head(settings_n_history())
           if(length(go_id > 0)) {
             go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
               str_c(collapse='\n')
