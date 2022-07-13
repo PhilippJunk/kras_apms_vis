@@ -620,19 +620,31 @@ server <- function(input, output, session) {
   
   # render information about ontology term currently displayed
   output$ontology_info <- renderUI({
-    # TODO potentially extract some closest ontologies from dist_mat and 
-    # display then as select-able options here as well?
-    # tibble(dist = dist_mat[rownames(dist_mat) == input$id,], id = colnames(dist_mat)) %>% arrange(-dist) %>% filter(id != input$id) %>% head(5) %>% inner_join(df_annotation, by='id') %>% select(id, process)
+    # get related GO terms
+    relatives <- tibble(dist = dist_mat[rownames(dist_mat) == input$id,], 
+                        id = colnames(dist_mat)) %>% 
+      arrange(-dist) %>% 
+      filter(id != input$id) %>% head(5) %>% pull(id)
+    relatives_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{relatives}' target='_blank'>{relatives}</a>: {get_go_term(relatives, df_annotation)} <button id='{relatives}' class='go_sel_button'>Select</button>") %>%
+        str_c(collapse='\n')
+    col2 <- HTML(
+      h5('Closest relatives in data set') %>% as.character, 
+      str_glue("<pre>{relatives_text}</pre>"))
+    
+    # get information
     annotation <- df_annotation %>%
       filter(id == input$id) %>% head(1)
-    HTML(strong(annotation$id) %>% as.character,
-         br() %>% as.character,
-         strong(annotation$process) %>% as.character,
-         br() %>% as.character(),
-         p(annotation$definition) %>% as.character,
-         hr() %>% as.character,
-         p('Size whole set: ', annotation$n_all) %>% as.character,
-         p('Number found in APMS: ', annotation$n_found) %>% as.character)
+    col1 <- HTML(
+      h4(annotation$id) %>% as.character,
+      h4(annotation$process) %>% as.character,
+      p(annotation$definition) %>% as.character,
+      hr() %>% as.character,
+      p('Size whole set: ', annotation$n_all) %>% as.character,
+      p('Number found in APMS: ', annotation$n_found) %>% as.character)
+
+    # assemble UI
+    fluidRow(column(6, col1),
+             column(6, col2))
   })
   
   # render plot for information on GO process
