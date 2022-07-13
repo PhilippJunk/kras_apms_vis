@@ -376,14 +376,44 @@ server <- function(input, output, session) {
   dfr_anova <- reactive({
     # returns data frame derived from df_anova filtered by
     # - selected GO process
+    # - selected mutations
+    # - selected combinations of conditions/concentrations
     # - selected p_value
     # - selected interactions
-    # TODO filtering by data input panel
-    validate(need(input$id, 'Please select an ontology term.'))
+    validate(need(input$id, 'Please select an ontology term.'),
+             need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
+    
+    # get selected samples
+    selected_samples <- expand_grid(mut_status = input$mut_status, 
+                                    cond_conc = input$cond_conc) %>%
+      mutate(condition = str_extract(cond_conc, '^[:alnum:]+(?=_)'),
+             concentration = str_extract(cond_conc, '(?<=_)[:alnum:]+$')) %>%
+      select(-cond_conc)
+    
+    # perform filtering
     df_anova %>%
       filter(id == input$id) %>%
       filter(p_adj <= input$anova_pval) %>%
       filter(term %in% input$anova_factors) %>%
+      group_by(term) %>% 
+      nest %>%
+      # filtering by selected samples
+      mutate(data = map2(term, data, function(t, d) {
+        # based on term, construct filter
+        if (t == 'mut_status') {selected <- selected_samples$mut_status}
+        if (t == 'condition') {selected <- selected_samples$condition}
+        if (t == 'concentration') {selected <- selected_samples$concentration}
+        if (t == 'mut_status:condition') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}')}
+        if (t == 'mut_status:concentration') {selected <-str_glue('{selected_samples$mut_status}:{selected_samples$concentration}')}
+        if (t == 'condition:concentration') {selected <- str_glue('{selected_samples$condition}:{selected_samples$concentration}')}
+        if (t == 'mut_status:condition:concentration') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}:{selected_samples$concentration}')}
+        
+        d %>%
+          filter(group_higher %in% selected & group_lower %in% selected)
+      })) %>%
+      unnest(cols = data) %>%
+      ungroup %>% 
       arrange(factor(term, levels = input$anova_factors)) %>%
       group_by(term) %>%
       arrange(p_adj, .by_group = T) %>%
@@ -395,11 +425,18 @@ server <- function(input, output, session) {
   dfr_gsea <- reactive({
     # return data frame derived from df_gsea filtered by
     # - selected GO process
+    # - selected mutations
+    # - selected combinations of conditions/concentrations
     # - selected p_value
-    # TODO filtering by data input panel
-    validate(need(input$id, 'Please select an ontology term.'))
+    validate(need(input$id, 'Please select an ontology term.'),
+             need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
+    selected_samples <- expand_grid(a = input$mut_status, b = input$cond_conc) %>%
+      mutate(selected_samples = str_glue('{a}_{b}')) %>%
+      pull(selected_samples)
     df_gsea %>%
       filter(id == input$id) %>%
+      filter(enriched_in %in% selected_samples & enriched_against %in% selected_samples) %>% 
       filter(p_adj <= input$gsea_pval) %>%
       group_by(enriched_in) %>%
       arrange(desc(NES), .by_group = T) %>%
