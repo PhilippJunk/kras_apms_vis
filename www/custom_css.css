@@ -4,14 +4,15 @@
 .sidebar {
   color: #FFF;
   position: fixed;
+	height: calc(100vh - 50px);
   width: 220px;
   white-space: nowrap;
-  overflow: visible;
+  overflow-y: auto;
 }
 
 .main-header {
   position: fixed;
-  width:100%;
+  width: 100%;
 }
 
 .content {

@@ -2,33 +2,21 @@
 ## Interactive Visualization KRAS APMS
 ##
 
-# TODO next steps
-# - write help (either popup, or maybe a couple readthedocs pages?)
-
 library(tidyverse)
 library(ggwordcloud)
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
-library(shinyalert)
 
-# helper function for heatmap generation
-source('functions.R')
 
-# load data
-load('data/data.Rdata')
-
-# color schemes from Camille's thesis:
-# TODO filter out what I don't need, maybe include more
-# TODO I need color codes for mutation status
+# color schemes 
 conditions <- c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa')
 conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
-condition_colors <- c("#001524","#12616D","#75964A",
-                      "#A1869E","#FF7D00","#78290F")
+conditions_colors <- c("#001524","#12616D","#75964A","#A1869E","#FF7D00","#78290F")
 
-mut_status <- c('wt', 'g12c', 'g12d', 'g12v')
-mut_status_hq <- c('WT', 'G12C', 'G12D', 'G12V')
-mut_status_colors <- c('#A98743', '#437C90', '#255957', '#8F2844')
+mut_stats <- c('wt', 'g12c', 'g12d', 'g12v')
+mut_stats_hq <- c('WT', 'G12C', 'G12D', 'G12V')
+mut_stats_colors <- c('#A98743', '#437C90', '#255957', '#8F2844')
 
 # get choices for inputs
 choices_clusters <- tibble(cluster = clusters) %>%
@@ -65,10 +53,9 @@ choices_anova_factors <- df_anova %>%
 
 # set default settings for initializing
 default_seltype <- 'process'
-default_id <- 'GO:0061621'
+default_id <- 'GO:1903578'
 default_mut_status <- choices_mut_status
 default_cond_conc <- choices_cond_conc
-default_panel <- 'sum_lfq'
 default_anova_factors <- c('condition', 'mut_status', 'concentration')
 default_anova_pval <- 0.05
 default_gsea_pval <- 0.05
@@ -78,11 +65,11 @@ default_gsea_pval <- 0.05
 ui <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization',
-    dropdownMenu(type = 'notifications', headerText = 'See also', 
+    dropdownMenu(type = 'notifications', headerText = 'Further links', 
                  icon = icon('info'), badgeStatus = NULL, # TODO add link to article
-                 notificationItem(text = 'Source code', icon = icon('github'), href = NULL), #TODO link
-                 notificationItem(text = 'Help', icon = icon('question'), href = NULL), # TODO link
-                 notificationItem(text = 'Contact', icon = icon('envelope'), href = NULL))), # TODO link
+                 notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'), #TODO link
+                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL),
+                 notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))), # TODO link
   dashboardSidebar(
     sidebarMenu(
       menuItem(text = 'Overview',
@@ -108,6 +95,12 @@ ui <- dashboardPage(
                            tabName = 'specfic-indiv',
                            icon = NULL)
                ),
+      menuItem(text = 'Settings',
+               tabName = 'settings',
+               icon = icon('gear', verify_fa = FALSE)),
+      menuItem(text = 'Help',
+               tabName = 'help',
+               icon = icon('question')),
       hr(),
       h4('Ontology Control Panel', style = 'text-align:center'),
       # Radio buttons on how to select GO terms
@@ -117,8 +110,12 @@ ui <- dashboardPage(
                    selected = default_seltype, inline = TRUE),
       # Input for selection of GO terms
       selectInput(inputId = 'id', label = 'ID/Process', 
-                  choices = c(default_id), selected = default_id,
+                  choices = default_id, selected = default_id,
                   multiple = FALSE),
+      # History of selected GO terms
+      actionButton('id_history', 'View History', icon = icon('history')),
+      # Random selection of GO term
+      actionButton('id_random', 'Random GO term', icon = icon('dice')),
       hr(),
       h4('Data Control Panel', style = 'text-align:center'),
       # Input for selection of mutation status
@@ -197,7 +194,36 @@ ui <- dashboardPage(
                                            options = list(maxItems = 10)))),
                 downloadButton('dl_png_proteins', label = 'Download PNG'),
                 downloadButton('dl_csv_proteins', label = 'Download CSV'),
-                width = 12)))
+                width = 12))),
+      tabItem(tabName = 'settings',
+              h2('Settings'),
+              fluidRow(column(width = 6,
+                              box(numericInput('settings_plot_height', 'Set height of plot downloads (in mm)', 
+                                               value = 150, max = 300),
+                                  numericInput('settings_plot_width', 'Set width of plot downloads (in mm)', 
+                                               value = 500, max = 1000),
+                                  numericInput('settings_plot_dpi', 'Set resolution of plot downloads (DPI)', 
+                                               value = 100, max = 300),
+                                  width = NULL, title = 'Download settings')),
+                       column(width = 6,
+                              box(numericInput('settings_n_history', 'Set number of elements shown',
+                                               value = 20, min=1),
+                                  width = NULL, title = 'History Settings'),
+                              box(numericInput('settings_n_proteins', 'Set number of proteins shown',
+                                               value = 50, min=1),
+                                  width = NULL, title = 'Settings "Samples per Proteins"')))),
+      tabItem(tabName = 'help',
+              h2('Help'),
+              fluidRow(box(includeMarkdown('www/helppage/help_context.md'),
+                           title = 'Context', width = 6),
+                       box(img(src = 'helppage/help_context.png', style = 'width:100%'),
+                            title = 'Overview App', width = 6)),
+              fluidRow(box(includeMarkdown('www/helppage/help_sections.md'),
+                           title = 'Sections', width = 12)),
+              fluidRow(box(includeMarkdown('www/helppage/help_interactive.md'),
+                           title = 'Interactivity', width = 12)),
+              fluidRow(box(includeMarkdown('www/helppage/help_outputs.md'),
+                           title = 'Outputs', width = 12)))
     )
   )
 )
@@ -243,14 +269,44 @@ server <- function(input, output, session) {
   dfr_anova <- reactive({
     # returns data frame derived from df_anova filtered by
     # - selected GO process
+    # - selected mutations
+    # - selected combinations of conditions/concentrations
     # - selected p_value
     # - selected interactions
-    # TODO finish filtering by data input panel
-    validate(need(input$id, 'Please select an ontology term.'))
+    validate(need(input$id, 'Please select an ontology term.'),
+             need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
+    
+    # get selected samples
+    selected_samples <- expand_grid(mut_status = input$mut_status, 
+                                    cond_conc = input$cond_conc) %>%
+      mutate(condition = str_extract(cond_conc, '^[:alnum:]+(?=_)'),
+             concentration = str_extract(cond_conc, '(?<=_)[:alnum:]+$')) %>%
+      select(-cond_conc)
+    
+    # perform filtering
     df_anova %>%
       filter(id == input$id) %>%
       filter(p_adj <= input$anova_pval) %>%
       filter(term %in% input$anova_factors) %>%
+      group_by(term) %>% 
+      nest %>%
+      # filtering by selected samples
+      mutate(data = map2(term, data, function(t, d) {
+        # based on term, construct filter
+        if (t == 'mut_status') {selected <- selected_samples$mut_status}
+        if (t == 'condition') {selected <- selected_samples$condition}
+        if (t == 'concentration') {selected <- selected_samples$concentration}
+        if (t == 'mut_status:condition') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}')}
+        if (t == 'mut_status:concentration') {selected <-str_glue('{selected_samples$mut_status}:{selected_samples$concentration}')}
+        if (t == 'condition:concentration') {selected <- str_glue('{selected_samples$condition}:{selected_samples$concentration}')}
+        if (t == 'mut_status:condition:concentration') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}:{selected_samples$concentration}')}
+        
+        d %>%
+          filter(group_higher %in% selected & group_lower %in% selected)
+      })) %>%
+      unnest(cols = data) %>%
+      ungroup %>% 
       arrange(factor(term, levels = input$anova_factors)) %>%
       group_by(term) %>%
       arrange(p_adj, .by_group = T) %>%
@@ -262,11 +318,18 @@ server <- function(input, output, session) {
   dfr_gsea <- reactive({
     # return data frame derived from df_gsea filtered by
     # - selected GO process
+    # - selected mutations
+    # - selected combinations of conditions/concentrations
     # - selected p_value
-    # TODO finish filtering by data input panel
-    validate(need(input$id, 'Please select an ontology term.'))
+    validate(need(input$id, 'Please select an ontology term.'),
+             need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
+    selected_samples <- expand_grid(a = input$mut_status, b = input$cond_conc) %>%
+      mutate(selected_samples = str_glue('{a}_{b}')) %>%
+      pull(selected_samples)
     df_gsea %>%
       filter(id == input$id) %>%
+      filter(enriched_in %in% selected_samples & enriched_against %in% selected_samples) %>% 
       filter(p_adj <= input$gsea_pval) %>%
       group_by(enriched_in) %>%
       arrange(desc(NES), .by_group = T) %>%
@@ -276,6 +339,7 @@ server <- function(input, output, session) {
   
   ##################################################################
   ## REACTIVE VALUES: data frames for plots
+  
   dfr_plot_proteins_overview <- reactive({
     dfr_apms() %>%
       group_by(hgnc) %>%
@@ -318,11 +382,12 @@ server <- function(input, output, session) {
   
   # construct plot for overview over individual proteins
   reac_plot_proteins_overview <- reactive({
+    validate(need(input$settings_n_proteins, 'Please provide the number of proteins to show in Settings.'))
     df <- dfr_plot_proteins_overview()
     n_total <- df$hgnc %>% unique %>% length
     df <- df %>% 
-      slice_max(count, n=50)
-    n_here <- min(50, n_total)
+      slice_max(count, n=settings_n_proteins())
+    n_here <- min(settings_n_proteins(), n_total)
     
     ggplot(df, aes(x = hgnc, y = count)) +
       geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
@@ -330,6 +395,7 @@ server <- function(input, output, session) {
       labs(x = 'HGNC', y = 'Number of samples',
            caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
       theme_minimal() +
+      theme(plot.background = element_rect(fill = 'white', color = 'white')) +
       NULL
   })
   
@@ -339,26 +405,32 @@ server <- function(input, output, session) {
     dfr_plot_goprocess_info() %>%
       ggplot(aes(x = group, y = count, fill = condition)) +
       geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
-      scale_fill_manual(values = c(condition_colors, 'white'), 
+      scale_fill_manual(values = c(conditions_colors, 'white'), 
                         breaks = c(conditions, 'whole_set'), 
                         labels = c(conditions_hq, 'Whole Set')) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
       labs(x = 'Group', y = 'Number of proteins', full = 'Condition') +
       theme_minimal() +
+      theme(plot.background = element_rect(fill = 'white', color = 'white')) +
       NULL
   })
   
   # construct plot of sum of LFQ intensities 
   reac_plot_lfqsum <- reactive({
     dfr_sum() %>%
-      mutate(mut_status = str_to_upper(mut_status)) %>%
+      # mutate(mut_status = str_to_upper(mut_status)) %>%
       mutate(condition = case_when(condition == 'unstim' ~ condition,
                                    T ~ str_to_upper(condition))) %>%
       ggplot(aes(x = mut_status, y = sum_LFQ, fill=mut_status)) +
       geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(size = 2, position = position_jitter(height=0, width=0.2)) +
       facet_grid(cols = vars(condition, concentration)) +
-      scale_x_discrete(guide = guide_axis(angle = 45)) +
+      scale_x_discrete(guide = guide_axis(angle = 45),
+                       breaks = mut_stats,
+                       labels = mut_stats_hq) +
+      scale_fill_manual(values = mut_stats_colors,
+                        breaks = mut_stats, 
+                        labels = mut_stats_hq) + 
       labs(x = 'Mutation Status', y = 'log2(Sum(LFQ))', fill = 'Mutation Status') +
       theme_bw(base_size = 15) +
       NULL
@@ -372,7 +444,7 @@ server <- function(input, output, session) {
       geom_boxplot(color = 'black', alpha=0.8) +
       geom_point(position = position_jitter(height=0, width=0.2)) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
-      scale_fill_manual(values = condition_colors, 
+      scale_fill_manual(values = conditions_colors, 
                         breaks = conditions, 
                         labels = conditions_hq) +
       labs(x = 'Condition/Concentration', y = 'log2(LFQ)', fill = 'Condition') +
@@ -390,7 +462,49 @@ server <- function(input, output, session) {
     plot
   })
   
-
+  ##################################################################
+  ## REACTIVE VALUES: others
+  
+  # history of selected ids
+  id_history <- reactiveVal(value = NULL)
+  
+  # choices for id selection
+  choices_id <- reactive({
+    validate(need(input$mut_status, 'Please select at least one mutation status'),
+             need(input$cond_conc, 'Please select at least one condition'))
+    df_sum %>%
+      filter(mut_status %in% input$mut_status) %>%
+      filter(str_glue('{condition}_{concentration}') %in% input$cond_conc) %>%
+      pull(id) %>% 
+      unique
+  })
+  
+  # manually validate settings because numericInput does not
+  settings_plot_height <- reactive({
+    max_value <- 300
+    min(max_value, input$settings_plot_height)
+  })
+  
+  settings_plot_width <- reactive({
+    max_value <- 1000
+    min(max_value, input$settings_plot_width)
+  })
+  
+  settings_plot_dpi <- reactive({
+    max_value <- 300
+    min(max_value, input$settings_plot_dpi)
+  })
+  
+  settings_n_history <- reactive({
+    min_value <- 1
+    max(min_value, input$settings_n_history)
+  })
+  
+  settings_n_proteins <- reactive({
+    min_value <- 1
+    max(min_value, input$settings_n_proteins)
+  })
+  
   ##################################################################
   ## RENDERED ELEMENTS
   
@@ -431,24 +545,31 @@ server <- function(input, output, session) {
   
   # render information about ontology term currently displayed
   output$ontology_info <- renderUI({
-    # TODO potentially extract the two closest ontologies from dist_mat and 
-    # display then as selectable options here as well?
+    # get related GO terms
+    relatives <- tibble(dist = dist_mat[rownames(dist_mat) == input$id,], 
+                        id = colnames(dist_mat)) %>% 
+      arrange(-dist) %>% 
+      filter(id != input$id) %>% head(5) %>% pull(id)
+    relatives_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{relatives}' target='_blank'>{relatives}</a>: {get_go_term(relatives, df_annotation)} <button id='{relatives}' class='go_sel_button'>Select</button>") %>%
+        str_c(collapse='\n')
+    col2 <- HTML(
+      h5('Closest relatives in data set') %>% as.character, 
+      str_glue("<pre>{relatives_text}</pre>"))
     
+    # get information
     annotation <- df_annotation %>%
       filter(id == input$id) %>% head(1)
-    n_all <- df_annotation %>% 
-      filter(id == input$id) %>%
-      pull(n_all) %>% head(1)
-    n_found <- df_annotation %>% 
-      filter(id == input$id) %>%
-      pull(n_found) %>% head(1)
-    HTML(str_c(str_c('<strong>', annotation$id, '</strong>'),
-               str_c('<strong>', annotation$process, '</strong>'),
-               annotation$definition,
-               '<hr>',
-               str_c('Size whole set: ', n_all),
-               str_c('Number found in APMS: ', n_found),
-               sep = '<br/>'))
+    col1 <- HTML(
+      h4(annotation$id) %>% as.character,
+      h4(annotation$process) %>% as.character,
+      p(annotation$definition) %>% as.character,
+      hr() %>% as.character,
+      p('Size whole set: ', annotation$n_all) %>% as.character,
+      p('Number found in APMS: ', annotation$n_found) %>% as.character)
+
+    # assemble UI
+    fluidRow(column(6, col1),
+             column(6, col2))
   })
   
   # render plot for information on GO process
@@ -501,9 +622,13 @@ server <- function(input, output, session) {
   # for goprocess_info
   output$dl_png_goprocess_info <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_proteinsPerCondition.png'),
-    content = function(con) {ggsave(con, reac_plot_goprocess_info(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_goprocess_info(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_goprocess_info <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_proteinsPerCondition.csv'),
@@ -514,9 +639,13 @@ server <- function(input, output, session) {
   # for lfqsum
   output$dl_png_lfqsum <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_sumLFQ.png'),
-    content = function(con) {ggsave(con, reac_plot_lfqsum(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_lfqsum(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_lfqsum <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_sumLFQ.csv'),
@@ -527,9 +656,13 @@ server <- function(input, output, session) {
   # for proteins_overview
   output$dl_png_proteins_overview <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_conditionsPerProtein.png'),
-    content = function(con) {ggsave(con, reac_plot_proteins_overview(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_proteins_overview(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_proteins_overview <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_conditionsPerProtein.csv'),
@@ -540,9 +673,13 @@ server <- function(input, output, session) {
   # for proteins
   output$dl_png_proteins <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_indivProteins.png'),
-    content = function(con) {ggsave(con, reac_plot_proteins(), device = 'png')},
+    content = function(con) {ggsave(con, reac_plot_proteins(), device = 'png',
+                                    height = settings_plot_height(),
+                                    width = settings_plot_width(),
+                                    dpi = settings_plot_dpi(),
+                                    units = 'mm', limitsize = F)},
     contentType = 'image/png'
-  ) # TODO set width + height
+  )
   
   output$dl_csv_proteins <- downloadHandler(
     filename = str_glue('{str_replace(input$id, ":", "")}_indivProteins.csv'),
@@ -567,52 +704,75 @@ server <- function(input, output, session) {
   ##################################################################
   ## OBSERVERS
   
-  # add observers to selection of processes
-  # update based on process selection
-  # TODO I can probably remove this whole selection? 
-  # OR I can adapt it on the cluster specific selection??
-  observe({
-    df_temp <- df_annotation %>%
-      select(id, process) %>%
-      filter(id %in% unique(df_sum$id)) %>%
-      distinct
-    
-    choice_values <- df_temp %>% pull(id)
-    if (input$seltype == 'process') {
-      choice_names <- str_c(choice_values, 
-                            df_temp %>% pull(process),
-                            sep=' ')
-    } else {
-      choice_names <- df_temp %>% pull(id)
-    }
-    names(choice_values) <- choice_names
-     
-    # keep selection if possible
-    # get currently selected
-    selected_curr <- input$id
-    if (selected_curr %in% df_temp$id) {
-      # retain selection
-      selected <- df_temp %>%
-        filter(id == selected_curr) %>%
-        pull(id)
-    } else if (selected_curr %in% df_temp$process) {  # TODO is this necessary?
-      # retain selection
-      selected <- df_temp %>% 
-        filter(process == selected_curr) %>%
-        pull(id)
-    } else {
-      # random selection
-      selected <- choice_values[1]
-    }
-
-    updateSelectInput(
-      inputId = 'id',
-      choices = choice_values,
-      selected = selected,
-    )
-  })
+  # observer for updating history of selected ids
+  bindEvent({
+    observe({
+      id_history(c(input$id, id_history()))
+    })
+  },
+  input$id)
   
-  # add observation to selection of individual proteins to plot
+  # add observers to selection of processes
+  bindEvent({
+    observe({
+      choices <- choices_id()
+      current <- input$id
+      
+      # add names depending on which seltype has been selected
+      if (input$seltype == 'process') {
+        choices_names <- left_join(
+          tibble(id = choices),
+          df_annotation, 
+          by = 'id') %>% 
+          mutate(name = str_glue('{id} {process}')) %>%
+          pull(name)
+        names(choices) <- choices_names
+      }
+
+      # check if current selection still in choices
+      if (current %in% choices) {
+        selected <- current
+      } else {
+        selected <- choices[1]
+      }
+
+      updateSelectInput(inputId = 'id', choices = choices, selected = selected)
+    })},
+    input$seltype,
+    choices_id(),
+    ignoreNULL = FALSE
+  )
+  
+  # add trigger to id history
+  bindEvent({
+    observe({
+      showModal(modalDialog(
+        p(str_glue('Showing the last {settings_n_history()} selected GO IDs.')),
+        {
+          go_id <- id_history() %>% head(settings_n_history())
+          if(length(go_id > 0)) {
+            go_text = str_glue("<a href='http://amigo.geneontology.org/amigo/term/{go_id}' target='_blank'>{go_id}</a>: {get_go_term(go_id, df_annotation)} <button id='{go_id}' class='go_sel_button'>Select</button>") %>%
+              str_c(collapse='\n')
+            HTML(str_glue("<pre>{go_text}</pre>"))
+          }},
+        title = 'GO ID selection history',
+        easyClose = TRUE,
+        fade = TRUE,
+        size = 'l'))
+    })
+  },
+  input$id_history)
+  
+
+  # add trigger to random id selection 
+  bindEvent({
+    observe({
+      updateSelectInput(inputId = 'id', selected = sample(choices_id(), 1))
+    })
+  },
+  input$id_random)
+  
+  # add observation to selection of individual proteins to visualize
   # Updated based on which GO process is selected
   observe({
     df_proteins <- dfr_apms() %>%
@@ -627,36 +787,7 @@ server <- function(input, output, session) {
        server = TRUE
      )
   })
-  
-  # add triggers to bottom row of action buttons/links
-  # TODO reset and savePlot
-  observeEvent(input$button_reset, {
-    # reset everything back to defaults
-    updateRadioButtons(inputId = 'seltype', selected = default_seltype)
-    updateSelectizeInput(inputId = 'id', selected = default_id)
-    updateSelectInput(inputId = 'mut_status', selected = default_mut_status)
-  })
-  
-  # TODO remove: moved to message notification
-  # for modals, consider html = TRUE and maybe custom icons?
-  observeEvent(input$button_help, {
-    shinyalert(
-      title = 'Help Page',
-      text = 'TODO',
-      type = 'info'
-    )
-  })
-  
-  # TODO remove: moved to message notification
-  observeEvent(input$button_impressum, {
-    shinyalert(
-      title = 'Impressum',
-      text = 'TODO',
-      type = 'info'
-    )
-  })
 }
-
 
 # Run the application 
 shinyApp(ui = ui, server = server)
