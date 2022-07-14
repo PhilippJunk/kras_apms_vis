@@ -7,6 +7,7 @@ library(ggwordcloud)
 library(shiny)
 library(shinydashboard)
 library(shinyjs)
+library(markdown)
 
 
 # helper function for heatmap generation
