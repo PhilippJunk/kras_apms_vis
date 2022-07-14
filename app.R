@@ -9,6 +9,12 @@ library(shinydashboard)
 library(shinyjs)
 
 
+# helper function for heatmap generation
+source('functions.R')
+
+# load data
+load('data/data.Rdata')
+
 # color schemes 
 conditions <- c('unstim', 'dmog', 'egf', 'il6', 'pge2', 'tnfa')
 conditions_hq <- c('unstim.', 'DMOG', 'EGF', 'IL-6', 'PGE2', 'TNF\u03B1')
