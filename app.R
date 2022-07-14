@@ -330,7 +330,17 @@ ui <- dashboardPage(
                                                value = 50, min=1),
                                   width = NULL, title = 'Settings "Samples per Proteins"')))),
       tabItem(tabName = 'help',
-              h2('Help'))
+              h2('Help'),
+              fluidRow(box(includeMarkdown('www/helppage/help_context.md'),
+                           title = 'Context', width = 6),
+                       box(img(src = 'helppage/help_context.png', style = 'width:100%'),
+                            title = 'Overview App', width = 6)),
+              fluidRow(box(includeMarkdown('www/helppage/help_sections.md'),
+                           title = 'Sections', width = 12)),
+              fluidRow(box(includeMarkdown('www/helppage/help_interactive.md'),
+                           title = 'Interactivity', width = 12)),
+              fluidRow(box(includeMarkdown('www/helppage/help_outputs.md'),
+                           title = 'Outputs', width = 12)))
     )
   )
 )
