@@ -2,10 +2,6 @@
 ## Interactive Visualization KRAS APMS
 ##
 
-# TODO next steps
-# - try caching heatmap to potentially improve performance
-# - write help (either popup, or maybe a couple readthedocs pages?)
-
 library(ComplexHeatmap)
 library(InteractiveComplexHeatmap)
 library(tidyverse)
@@ -136,15 +132,14 @@ default_anova_pval <- 0.05
 default_gsea_pval <- 0.05
 
 
-# TODO think about potential icons??
 ui <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization',
     dropdownMenu(type = 'notifications', headerText = 'Further links', 
                  icon = icon('info'), badgeStatus = NULL, # TODO add link to article
-                 notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'), #TODO link
-                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL),
-                 notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))), # TODO link
+                 notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'),
+                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL), #TODO
+                 notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))),
   dashboardSidebar(
     sidebarMenu(
       menuItem(text = 'Overview',
@@ -402,33 +397,39 @@ server <- function(input, output, session) {
       select(-cond_conc)
     
     # perform filtering
-    df_anova %>%
+    df <- df_anova %>%
       filter(id == input$id) %>%
       filter(p_adj <= input$anova_pval) %>%
       filter(term %in% input$anova_factors) %>%
-      group_by(term) %>% 
-      nest %>%
-      # filtering by selected samples
-      mutate(data = map2(term, data, function(t, d) {
-        # based on term, construct filter
-        if (t == 'mut_status') {selected <- selected_samples$mut_status}
-        if (t == 'condition') {selected <- selected_samples$condition}
-        if (t == 'concentration') {selected <- selected_samples$concentration}
-        if (t == 'mut_status:condition') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}')}
-        if (t == 'mut_status:concentration') {selected <-str_glue('{selected_samples$mut_status}:{selected_samples$concentration}')}
-        if (t == 'condition:concentration') {selected <- str_glue('{selected_samples$condition}:{selected_samples$concentration}')}
-        if (t == 'mut_status:condition:concentration') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}:{selected_samples$concentration}')}
-        
-        d %>%
-          filter(group_higher %in% selected & group_lower %in% selected)
-      })) %>%
-      unnest(cols = data) %>%
-      ungroup %>% 
       arrange(factor(term, levels = input$anova_factors)) %>%
       group_by(term) %>%
       arrange(p_adj, .by_group = T) %>%
       ungroup %>%
       select(term, group_higher, group_lower, estimate, p_adj)
+    
+    if (nrow(df) > 0) {
+      df <- df %>%
+        group_by(term) %>% 
+        nest %>%
+        # filtering by selected samples
+        mutate(data = map2(term, data, function(t, d) {
+          # based on term, construct filter
+          if (t == 'mut_status') {selected <- selected_samples$mut_status}
+          if (t == 'condition') {selected <- selected_samples$condition}
+          if (t == 'concentration') {selected <- selected_samples$concentration}
+          if (t == 'mut_status:condition') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}')}
+          if (t == 'mut_status:concentration') {selected <-str_glue('{selected_samples$mut_status}:{selected_samples$concentration}')}
+          if (t == 'condition:concentration') {selected <- str_glue('{selected_samples$condition}:{selected_samples$concentration}')}
+          if (t == 'mut_status:condition:concentration') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}:{selected_samples$concentration}')}
+          
+          d %>%
+            filter(group_higher %in% selected & group_lower %in% selected)
+        })) %>%
+        unnest(cols = data) %>%
+        ungroup
+    }
+    
+    df
   })
   
   # reactive subset of df_gsea
@@ -475,6 +476,8 @@ server <- function(input, output, session) {
           pull(n_all) %>% head(1)
       ),
       dfr_apms() %>%
+        select(-label, -LFQ) %>%
+        distinct %>% 
         group_by(group, mut_status, condition, concentration) %>%
         summarise(count = n()) %>%
         ungroup %>%
@@ -716,7 +719,6 @@ server <- function(input, output, session) {
   
   # render ANOVA table
   output$table_anova <- renderDataTable({
-    # TODO potentially rename estimate into something more meaningful
     dfr_anova() %>%
       mutate(estimate = round(estimate, 2)) %>%
       mutate(p_adj = scales::scientific(p_adj)) %>%
