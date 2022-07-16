@@ -459,31 +459,27 @@ server <- function(input, output, session) {
   ## REACTIVE VALUES: data frames for plots
   
   dfr_plot_proteins_overview <- reactive({
+    n_samples <- df_apms %>% pull(label) %>% unique %>% length
     dfr_apms() %>%
       group_by(hgnc) %>%
-      summarise(count = n()) %>%
+      summarise(count = n(),
+                perc = 100 * n()/n_samples) %>%
       ungroup %>%
-      arrange(desc(count)) %>%
+      arrange(desc(perc)) %>%
       mutate(hgnc = factor(hgnc, levels = hgnc))
   })
   
   dfr_plot_goprocess_info <- reactive({
-    bind_rows(
-      tibble(
-        group = 'Whole Set',
-        condition = 'whole_set',
-        count = df_annotation %>% filter(id == input$id) %>% 
-          pull(n_all) %>% head(1)
-      ),
-      dfr_apms() %>%
-        select(-label, -LFQ) %>%
-        distinct %>% 
-        group_by(group, mut_status, condition, concentration) %>%
-        summarise(count = n()) %>%
-        ungroup %>%
-        arrange(-count) %>%
-        select(group, condition, count)
-    ) %>%
+    n_term <- df_annotation %>% filter(id == input$id) %>% pull(n_all) %>% head(1)
+    dfr_apms() %>%
+      select(-label, -LFQ) %>%
+      distinct %>%
+      group_by(group, mut_status, condition, concentration) %>%
+      summarise(perc = 100 * n()/n_term,
+                count = n()) %>%
+      ungroup %>%
+      arrange(-perc) %>%
+      select(group, condition, count, perc) %>%
       mutate(group = factor(group, levels = unique(group)))
   })
   
@@ -511,13 +507,13 @@ server <- function(input, output, session) {
     df <- dfr_plot_proteins_overview()
     n_total <- df$hgnc %>% unique %>% length
     df <- df %>% 
-      slice_max(count, n=settings_n_proteins())
+      slice_max(perc, n=settings_n_proteins())
     n_here <- min(settings_n_proteins(), n_total)
     
-    ggplot(df, aes(x = hgnc, y = count)) +
+    ggplot(df, aes(x = hgnc, y = perc)) +
       geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
-      labs(x = 'HGNC', y = 'Number of samples',
+      labs(x = 'HGNC', y = 'Percentage of samples',
            caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
       theme_minimal() +
       theme(plot.background = element_rect(fill = 'white', color = 'white')) +
@@ -526,15 +522,15 @@ server <- function(input, output, session) {
   
   # construct plot for information on GO process
   reac_plot_goprocess_info <- reactive({
-    # TODO include custom color set
     dfr_plot_goprocess_info() %>%
-      ggplot(aes(x = group, y = count, fill = condition)) +
+      ggplot(aes(x = group, y = perc, fill = condition)) +
       geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
-      scale_fill_manual(values = c(conditions_colors, 'white'), 
-                        breaks = c(conditions, 'whole_set'), 
-                        labels = c(conditions_hq, 'Whole Set')) +
+      scale_fill_manual(values = conditions_colors, 
+                        breaks = conditions, 
+                        labels = conditions_hq) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
-      labs(x = 'Group', y = 'Number of proteins', full = 'Condition') +
+      labs(x = 'Group', y = 'Percentage of identified\nproteins in GO term', 
+           fill = 'Condition') +
       theme_minimal() +
       theme(plot.background = element_rect(fill = 'white', color = 'white')) +
       NULL
