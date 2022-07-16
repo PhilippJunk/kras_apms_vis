@@ -189,6 +189,11 @@ ui <- dashboardPage(
                                                        label = 'Set cutoff for adjusted p-value',
                                                        min = 0.01, max = 0.1, 
                                                        value = default_gsea_pval),
+                                           radioButtons(inputId = 'gsea_comparible_contrasts', 
+                                                        label = 'Show only comparible (either comparible on mutation status, or comparible on condition/concentration) contrasts?',
+                                                        choiceValues = c(TRUE, FALSE), 
+                                                        choiceNames = c('Yes', 'No'), 
+                                                        selected = TRUE, inline = TRUE),
                                            downloadButton('dl_csv_gsea', label = 'Download CSV')))))),
       tabItem(tabName = 'specfic-indiv',
               h2('Individual Proteins LFQ intensities'),
@@ -333,13 +338,14 @@ server <- function(input, output, session) {
     # - selected mutations
     # - selected combinations of conditions/concentrations
     # - selected p_value
+    # - if setting activated, only show contrasts where only one factor changes
     validate(need(input$id, 'Please select an ontology term.'),
              need(input$mut_status, 'Please select at least one mutation status'),
              need(input$cond_conc, 'Please select at least one condition'))
     selected_samples <- expand_grid(a = input$mut_status, b = input$cond_conc) %>%
       mutate(selected_samples = str_glue('{a}_{b}')) %>%
       pull(selected_samples)
-    df_gsea %>%
+    df <- df_gsea %>%
       filter(id == input$id) %>%
       filter(enriched_in %in% selected_samples & enriched_against %in% selected_samples) %>% 
       filter(p_adj <= input$gsea_pval) %>%
@@ -347,6 +353,14 @@ server <- function(input, output, session) {
       arrange(desc(NES), .by_group = T) %>%
       ungroup %>%
       select(id, enriched_in, enriched_against, NES, p_adj)
+    
+    if (as.logical(input$gsea_comparible_contrasts)) {
+      df <- df %>% 
+        filter(
+          (str_extract(enriched_in, '[:alnum:]+(?=_)') == str_extract(enriched_against, '[:alnum:]+(?=_)')) |
+          (str_extract(enriched_in, '(?<=_)[:alnum:]+_[:alnum:]+') == str_extract(enriched_against, '(?<=_)[:alnum:]+_[:alnum:]+'))
+        )}
+    df
   })
   
   ##################################################################
