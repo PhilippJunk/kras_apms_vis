@@ -68,15 +68,14 @@ default_anova_pval <- 0.05
 default_gsea_pval <- 0.05
 
 
-# TODO think about potential icons??
 ui <- dashboardPage(
   dashboardHeader(
     title = 'KRAS APMS Visualization',
     dropdownMenu(type = 'notifications', headerText = 'Further links', 
                  icon = icon('info'), badgeStatus = NULL, # TODO add link to article
-                 notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'), #TODO link
-                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL),
-                 notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))), # TODO link
+                 notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'),
+                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL), #TODO
+                 notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))),
   dashboardSidebar(
     sidebarMenu(
       menuItem(text = 'Overview',
@@ -292,33 +291,39 @@ server <- function(input, output, session) {
       select(-cond_conc)
     
     # perform filtering
-    df_anova %>%
+    df <- df_anova %>%
       filter(id == input$id) %>%
       filter(p_adj <= input$anova_pval) %>%
       filter(term %in% input$anova_factors) %>%
-      group_by(term) %>% 
-      nest %>%
-      # filtering by selected samples
-      mutate(data = map2(term, data, function(t, d) {
-        # based on term, construct filter
-        if (t == 'mut_status') {selected <- selected_samples$mut_status}
-        if (t == 'condition') {selected <- selected_samples$condition}
-        if (t == 'concentration') {selected <- selected_samples$concentration}
-        if (t == 'mut_status:condition') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}')}
-        if (t == 'mut_status:concentration') {selected <-str_glue('{selected_samples$mut_status}:{selected_samples$concentration}')}
-        if (t == 'condition:concentration') {selected <- str_glue('{selected_samples$condition}:{selected_samples$concentration}')}
-        if (t == 'mut_status:condition:concentration') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}:{selected_samples$concentration}')}
-        
-        d %>%
-          filter(group_higher %in% selected & group_lower %in% selected)
-      })) %>%
-      unnest(cols = data) %>%
-      ungroup %>% 
       arrange(factor(term, levels = input$anova_factors)) %>%
       group_by(term) %>%
       arrange(p_adj, .by_group = T) %>%
       ungroup %>%
       select(term, group_higher, group_lower, estimate, p_adj)
+    
+    if (nrow(df) > 0) {
+      df <- df %>%
+        group_by(term) %>% 
+        nest %>%
+        # filtering by selected samples
+        mutate(data = map2(term, data, function(t, d) {
+          # based on term, construct filter
+          if (t == 'mut_status') {selected <- selected_samples$mut_status}
+          if (t == 'condition') {selected <- selected_samples$condition}
+          if (t == 'concentration') {selected <- selected_samples$concentration}
+          if (t == 'mut_status:condition') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}')}
+          if (t == 'mut_status:concentration') {selected <-str_glue('{selected_samples$mut_status}:{selected_samples$concentration}')}
+          if (t == 'condition:concentration') {selected <- str_glue('{selected_samples$condition}:{selected_samples$concentration}')}
+          if (t == 'mut_status:condition:concentration') {selected <- str_glue('{selected_samples$mut_status}:{selected_samples$condition}:{selected_samples$concentration}')}
+          
+          d %>%
+            filter(group_higher %in% selected & group_lower %in% selected)
+        })) %>%
+        unnest(cols = data) %>%
+        ungroup
+    }
+    
+    df
   })
   
   # reactive subset of df_gsea
@@ -348,29 +353,27 @@ server <- function(input, output, session) {
   ## REACTIVE VALUES: data frames for plots
   
   dfr_plot_proteins_overview <- reactive({
+    n_samples <- df_apms %>% pull(label) %>% unique %>% length
     dfr_apms() %>%
       group_by(hgnc) %>%
-      summarise(count = n()) %>%
+      summarise(count = n(),
+                perc = 100 * n()/n_samples) %>%
       ungroup %>%
-      arrange(desc(count)) %>%
+      arrange(desc(perc)) %>%
       mutate(hgnc = factor(hgnc, levels = hgnc))
   })
   
   dfr_plot_goprocess_info <- reactive({
-    bind_rows(
-      tibble(
-        group = 'Whole Set',
-        condition = 'whole_set',
-        count = df_annotation %>% filter(id == input$id) %>% 
-          pull(n_all) %>% head(1)
-      ),
-      dfr_apms() %>%
-        group_by(group, mut_status, condition, concentration) %>%
-        summarise(count = n()) %>%
-        ungroup %>%
-        arrange(-count) %>%
-        select(group, condition, count)
-    ) %>%
+    n_term <- df_annotation %>% filter(id == input$id) %>% pull(n_all) %>% head(1)
+    dfr_apms() %>%
+      select(-label, -LFQ) %>%
+      distinct %>%
+      group_by(group, mut_status, condition, concentration) %>%
+      summarise(perc = 100 * n()/n_term,
+                count = n()) %>%
+      ungroup %>%
+      arrange(-perc) %>%
+      select(group, condition, count, perc) %>%
       mutate(group = factor(group, levels = unique(group)))
   })
   
@@ -393,13 +396,13 @@ server <- function(input, output, session) {
     df <- dfr_plot_proteins_overview()
     n_total <- df$hgnc %>% unique %>% length
     df <- df %>% 
-      slice_max(count, n=settings_n_proteins())
+      slice_max(perc, n=settings_n_proteins())
     n_here <- min(settings_n_proteins(), n_total)
     
-    ggplot(df, aes(x = hgnc, y = count)) +
+    ggplot(df, aes(x = hgnc, y = perc)) +
       geom_bar(stat = 'identity', color = 'black', fill = 'gray') +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
-      labs(x = 'HGNC', y = 'Number of samples',
+      labs(x = 'HGNC', y = 'Percentage of samples',
            caption = str_glue('Showing {n_here} of {n_total} proteins.')) + 
       theme_minimal() +
       theme(plot.background = element_rect(fill = 'white', color = 'white')) +
@@ -408,15 +411,15 @@ server <- function(input, output, session) {
   
   # construct plot for information on GO process
   reac_plot_goprocess_info <- reactive({
-    # TODO include custom color set
     dfr_plot_goprocess_info() %>%
-      ggplot(aes(x = group, y = count, fill = condition)) +
+      ggplot(aes(x = group, y = perc, fill = condition)) +
       geom_bar(stat = 'identity', position = 'dodge', color = 'black', alpha=0.7) +
-      scale_fill_manual(values = c(conditions_colors, 'white'), 
-                        breaks = c(conditions, 'whole_set'), 
-                        labels = c(conditions_hq, 'Whole Set')) +
+      scale_fill_manual(values = conditions_colors, 
+                        breaks = conditions, 
+                        labels = conditions_hq) +
       scale_x_discrete(guide = guide_axis(angle = 45)) +
-      labs(x = 'Group', y = 'Number of proteins', full = 'Condition') +
+      labs(x = 'Group', y = 'Percentage of identified\nproteins in GO term', 
+           fill = 'Condition') +
       theme_minimal() +
       theme(plot.background = element_rect(fill = 'white', color = 'white')) +
       NULL
@@ -601,7 +604,6 @@ server <- function(input, output, session) {
   
   # render ANOVA table
   output$table_anova <- renderDataTable({
-    # TODO potentially rename estimate into something more meaningful
     dfr_anova() %>%
       mutate(estimate = round(estimate, 2)) %>%
       mutate(p_adj = scales::scientific(p_adj)) %>%
