@@ -138,7 +138,7 @@ ui <- dashboardPage(
     dropdownMenu(type = 'notifications', headerText = 'Further links', 
                  icon = icon('info'), badgeStatus = NULL, # TODO add link to article
                  notificationItem(text = 'Source code', icon = icon('github'), href = 'https://github.com/PhilippJunk/kras_apms_vis'),
-                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = NULL), #TODO
+                 notificationItem(text = 'Contact Scientific', icon = icon('envelope'), href = 'mailto:christina.kiel@unipv.it'),
                  notificationItem(text = 'Contact Technical', icon = icon('envelope'), href = 'mailto:philipp.junk@ucdconnect.ie?subject=Shiny App KRAS APMS'))),
   dashboardSidebar(
     sidebarMenu(
