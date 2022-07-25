@@ -9,9 +9,9 @@ Functional analysis with the aim of linking changes in the interactome to functi
 
 For more details, please refer to our manuscript: COMING SOON
 
-The raw data can be accessed here: COMING SOON
+The raw data is available on the PRoteomics IDEntification (PRIDE) database with the identifier [PXD035399](https://www.ebi.ac.uk/pride/archive/projects/PXD035399).
 
-Our data analysis pipeline is available on Zenodo: COMING SOON
+Our data analysis pipeline is available on [Zenodo](https://doi.org/10.5281/zenodo.6896565). [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.6896565.svg)](https://doi.org/10.5281/zenodo.6896565)
 
 # Accessing the app
 

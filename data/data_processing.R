@@ -27,7 +27,8 @@ df_sum <- read.csv(str_glue('{data_dir}/outputs_03/df_sum.csv')) %>%
 df_ontology <- read.csv(str_glue('{data_dir}/outputs_03/df_ontology.csv')) %>%
   filter(id %in% unique(c(df_gsea$id, df_anova$id)))
 df_annotation <- read.csv(str_glue('{data_dir}/outputs_03/df_annotation.csv')) %>%
-  filter(id %in% unique(c(df_gsea$id, df_anova$id)))
+  filter(id %in% unique(c(df_gsea$id, df_anova$id))) %>%
+  mutate(definition = replace_na(definition, ''))
 
 # GO semantic analysis
 load(str_glue('{data_dir}/outputs_04/dist_mat.Rdata'))
